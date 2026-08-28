@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Purchase Orders — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Purchases</p>
+<h1>Purchase orders</h1>
+<p class="sub">Create a purchase order, send the PDF to your supplier, and mark lines received as stock arrives — cost prices update automatically.</p>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">All purchase orders</h2>
+    <div>
+      <a href="{{ url_for('purchases.suppliers_view') }}" class="btn btn-ghost">Suppliers</a>
+      <a href="{{ url_for('purchases.new_view') }}" class="btn btn-primary">+ New purchase order</a>
+    </div>
+  </div>
+  {% if orders %}
+  <table>
+    <thead><tr><th>PO number</th><th>Supplier</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {% for po in orders %}
+      <tr>
+        <td>{{ po.po_number }}</td>
+        <td>{{ po.supplier_name }}</td>
+        <td>
+          {% if po.status == 'received' %}<span class="badge badge-sage">Received</span>
+          {% elif po.status == 'partially_received' %}<span class="badge badge-accent">Partially received</span>
+          {% elif po.status == 'sent' %}<span class="badge badge-structure">Sent</span>
+          {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
+        </td>
+        <td>{{ po.created_at[:10] }}</td>
+        <td style="text-align:right;"><a href="{{ url_for('purchases.detail_view', po_id=po.id) }}" class="btn btn-ghost">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No purchase orders yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

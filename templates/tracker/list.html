@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Project Tracker — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Project Tracker</p>
+<h1>Project Tracker</h1>
+<p class="sub">Track labor &amp; engineers, deadlines, progress and budget for every finalized quote.</p>
+
+<div class="tracker-stats">
+  <div class="stat"><div class="lbl">Final quotes</div><div class="val">{{ stats.total }}</div></div>
+  <div class="stat"><div class="lbl">Tracker started</div><div class="val">{{ stats.started }}</div></div>
+  <div class="stat"><div class="lbl">All tasks done</div><div class="val">{{ stats.completed }}</div></div>
+  <div class="stat"><div class="lbl">Over budget</div><div class="val">{{ stats.over_budget }}</div></div>
+</div>
+
+<div class="panel">
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>Quote No.</th><th>Client / Project</th><th>Stage</th><th>Quoted value</th><th>Progress</th><th>Budget</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      {% set q = r.quote %}
+      <tr>
+        <td>{{ q.quote_number }}</td>
+        <td>
+          <b>{{ q.client_name or '—' }}</b><br>
+          <span style="color:var(--ink-soft); font-size:0.8rem;">{{ q.project_name or '—' }}</span>
+        </td>
+        <td>
+          {% if q.stage == 'Quote' %}<span class="badge badge-structure">Quote</span>
+          {% elif q.stage == 'Approved' %}<span class="badge badge-accent">Approved</span>
+          {% elif q.stage == 'In Progress' %}<span class="badge badge-accent">In Progress</span>
+          {% elif q.stage == 'Completed' %}<span class="badge badge-sage">Completed</span>
+          {% elif q.stage == 'Paid' %}<span class="badge badge-sage">Paid</span>
+          {% else %}<span class="badge badge-muted">{{ q.stage }}</span>{% endif %}
+        </td>
+        <td style="font-family:'IBM Plex Mono',monospace;">{{ "%.2f"|format(r.totals.grand) }}</td>
+        <td style="min-width:140px;">
+          {% if r.progress %}
+            <div class="progress-bar-track"><div class="progress-bar-fill{{ ' is-complete' if r.progress.done == r.progress.total and r.progress.total > 0 else '' }}" style="width:{{ r.progress.pct|round(0, 'floor') }}%;"></div></div>
+            <span style="font-size:0.78rem; color:var(--ink-soft);">{{ r.progress.done }}/{{ r.progress.total }} tasks</span>
+          {% else %}
+            <span style="font-size:0.8rem; color:var(--ink-soft);">Not started</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.budget %}
+            <span class="{{ 'variance-over' if r.budget.variance < 0 else 'variance-under' }}" style="font-family:'IBM Plex Mono',monospace; font-size:0.85rem;">
+              {{ "%.2f"|format(r.budget.variance) }}
+            </span>
+          {% else %}
+            <span style="color:var(--ink-soft);">—</span>
+          {% endif %}
+        </td>
+        <td><a href="{{ url_for('tracker.detail_view', quote_id=q.id) }}" class="btn btn-secondary">{{ 'Open tracker' if r.has_tracker else 'Start tracker' }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No finalized quotes yet — finalize a quote in the Quotes section to start tracking it here.</div>
+  {% endif %}
+</div>
+{% endblock %}

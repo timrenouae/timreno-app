@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Rough Estimator — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Rough Estimator</p>
+<h1>Rough Estimate Builder</h1>
+<p class="sub">Pick a room, cabin, or partition type, adjust the fixture counts, and get a fast ballpark price — including an AED/sq ft figure. This is for early conversations with a client, not a final number; use <a href="{{ url_for('quotes.new_view') }}">Quote Builder</a> for the real itemized quote.</p>
+
+<div class="disclaimer"><b>Rough estimate only.</b> The unit rates below are editable starting points, not researched market prices — open the Rate Sheet and set them to match your actual material + labor costs before trusting the numbers.</div>
+
+<div class="panel">
+  <h2>Job details</h2>
+  <div class="form-grid">
+    <div class="field"><label for="metaClient">Client name</label><input id="metaClient" type="text" placeholder="e.g. Ahmed Al Farsi"></div>
+    <div class="field"><label for="metaProjectName">Project name</label><input id="metaProjectName" type="text" placeholder="e.g. Al Barsha Villa"></div>
+    <div class="field"><label for="metaProjectType">Project type</label><input id="metaProjectType" type="text" placeholder="e.g. Office Fit-out"></div>
+    <div class="field"><label for="metaLocation">Location</label><input id="metaLocation" type="text" placeholder="e.g. Business Bay, Dubai"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Finish level &amp; VAT</h2>
+  <p class="hint">Finish level scales the rate sheet for spaces you add from this point on — it won't rewrite rows already on the page.</p>
+  <div class="finish-row">
+    <div class="seg" id="finishSeg">
+      <button type="button" data-level="Basic">Basic</button>
+      <button type="button" data-level="Standard" class="active">Standard</button>
+      <button type="button" data-level="Premium">Premium</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <label style="margin:0;" for="vatPercent">VAT %</label>
+      <input id="vatPercent" type="number" min="0" step="0.1" value="5" style="width:70px;">
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <details class="rate-sheet">
+    <summary>Rate Sheet — starting unit rates (click to edit)</summary>
+    <p class="hint">These are the base rates before the finish-level multiplier. Your edits are shared with the whole team.</p>
+    <div id="rateSheetBox"></div>
+    <div class="rate-actions">
+      <button class="btn btn-secondary" id="saveRatesBtn" type="button">Save rates</button>
+      <button class="btn btn-ghost" id="resetRatesBtn" type="button">Reset to defaults</button>
+    </div>
+  </details>
+</div>
+
+<div class="panel">
+  <h2>Add a space</h2>
+  <div class="add-space-row">
+    <div class="field"><label for="newSpaceType">Type</label><select id="newSpaceType"></select></div>
+    <div class="field"><label for="newSpaceLabel">Label</label><input id="newSpaceLabel" type="text" placeholder="e.g. Cabin 1, Pantry"></div>
+    <div class="field"><label for="newSpaceSize">Size (sq ft)</label><input id="newSpaceSize" type="number" min="0" step="1" placeholder="e.g. 120"></div>
+    <button class="btn btn-primary" id="addSpaceBtn" type="button">+ Add space</button>
+  </div>
+</div>
+
+<div id="spacesBox"></div>
+
+<div class="summary panel">
+  <div class="summary-grid">
+    <div class="summary-figures">
+      <div class="fig"><div class="lbl">Subtotal</div><div class="val" id="sumSubtotal">AED 0.00</div></div>
+      <div class="fig"><div class="lbl">VAT</div><div class="val" id="sumVat">AED 0.00</div></div>
+      <div class="fig grand"><div class="lbl">Grand total</div><div class="val" id="sumGrand">AED 0.00</div></div>
+      <div class="fig"><div class="lbl">≈ AED / sq ft</div><div class="val" id="sumPerSqft">—</div></div>
+    </div>
+    <div class="summary-actions">
+      <button class="btn btn-secondary" id="pdfBtn" type="button">Download Estimate PDF</button>
+      <button class="btn btn-primary" id="sendToBuilderBtn" type="button">Send to Quote Builder</button>
+      <button class="btn btn-ghost" id="newEstimateBtn" type="button">New Estimate</button>
+    </div>
+  </div>
+  <p class="hint" id="estimatorStatus"></p>
+</div>
+
+<script id="timrInitialData" type="application/json">{{ initial_data | tojson }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/estimator.js') }}"></script>
+{% endblock %}

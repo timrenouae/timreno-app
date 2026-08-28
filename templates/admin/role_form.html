@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit role' if role else 'New role' }} — Admin — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Admin</p>
+<h1>{{ 'Edit role' if role else 'New role' }}</h1>
+
+<div class="panel" style="max-width:640px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="name">Role name</label>
+      <input type="text" id="name" name="name" required value="{{ role.name if role else '' }}">
+    </div>
+
+    <div class="field">
+      <label>Permissions — select what this role can do</label>
+      {% if role and role.is_system %}
+        <p class="hint">The Admin role is protected: it always keeps "Manage users" and "Manage roles" so the account can never lock itself out.</p>
+      {% endif %}
+      <div class="checkbox-grid">
+        {% for p in all_permissions %}
+          <label>
+            <input type="checkbox" name="permissions" value="{{ p.code }}"
+                   {{ 'checked' if p.code in role_permissions else '' }}
+                   {{ 'disabled' if role and role.is_system and p.code in ['users.manage','roles.manage'] else '' }}>
+            <span>{{ p.description }}<br><code style="font-size:11px; color:var(--ink-soft);">{{ p.code }}</code></span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if role else 'Create role' }}</button>
+    <a href="{{ url_for('admin.roles_view') }}" class="btn btn-ghost">Cancel</a>
+  </form>
+</div>
+{% endblock %}

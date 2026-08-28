@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ quote.project_name or quote.quote_number }} — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Customer Portal</p>
+<h1>{{ quote.project_name or quote.quote_number }}</h1>
+<p class="sub">{{ quote.location or '' }}</p>
+
+<div class="panel">
+  <h2>Progress</h2>
+  <div class="progress-bar-track"><div class="progress-bar-fill{{ ' is-complete' if progress.done == progress.total and progress.total > 0 else '' }}" style="width:{{ progress.pct|round(0, 'floor') }}%;"></div></div>
+  <div class="progress-stats" style="display:flex; justify-content:space-between; font-size:0.85rem; color:var(--ink-soft); margin-top:8px;">
+    <span>{{ progress.done }} / {{ progress.total }} items installed</span>
+    <span>{{ progress.pct|round(1) }}%</span>
+  </div>
+  <p class="hint" style="margin-top:10px; margin-bottom:0;">Current stage: <span class="badge badge-structure">{{ quote.stage }}</span></p>
+</div>
+
+<div class="panel">
+  <h2>Checklist</h2>
+  {% if grouped_tasks %}
+    {% for room_label, group_tasks in grouped_tasks %}
+      <h3 class="task-group-heading">{{ room_label or 'Other' }}</h3>
+      {% for t in group_tasks %}
+        <div class="task-row{{ ' is-completed' if t.status == 'completed' else '' }}" style="display:flex; gap:10px; align-items:center; padding:6px 0;">
+          <span>{% if t.status == 'completed' %}&#10003;{% else %}&#9675;{% endif %}</span>
+          <span class="task-desc{{ ' is-completed' if t.status == 'completed' else '' }}">{{ t.description }}</span>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">Your installer hasn't started the checklist yet.</div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('portal.list_view') }}" class="btn btn-ghost">← Back to My Projects</a>
+</div>
+{% endblock %}

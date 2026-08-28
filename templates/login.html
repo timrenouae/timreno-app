@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign in — TIM RENO{% endblock %}
+{% block content %}
+<div class="login-shell">
+  <div class="panel login-card">
+    <p class="eyebrow">TIM RENO</p>
+    <h1 style="font-size:1.4rem;">Sign in</h1>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autofocus required autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

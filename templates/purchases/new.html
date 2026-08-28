@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}New purchase order — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Purchases</p>
+<h1>New purchase order</h1>
+
+<div class="panel" style="max-width:480px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="supplier_id">Supplier</label>
+      <select id="supplier_id" name="supplier_id" required>
+        <option value="">Select a supplier…</option>
+        {% for s in suppliers %}
+          <option value="{{ s.id }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="notes">Notes (optional)</label>
+      <textarea id="notes" name="notes"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary" {{ 'disabled' if not suppliers else '' }}>Create draft</button>
+    <a href="{{ url_for('purchases.list_view') }}" class="btn btn-ghost">Cancel</a>
+  </form>
+  {% if not suppliers %}
+    <p class="hint"><a href="{{ url_for('purchases.supplier_new') }}">Add your first supplier →</a></p>
+  {% endif %}
+</div>
+{% endblock %}

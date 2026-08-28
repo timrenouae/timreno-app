@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit user' if user else 'New user' }} — Admin — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Admin</p>
+<h1>{{ 'Edit user' if user else 'New user' }}</h1>
+
+<div class="panel" style="max-width:480px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if not user %}
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autofocus>
+    </div>
+    {% else %}
+    <div class="field">
+      <label>Username</label>
+      <input type="text" value="{{ user.username }}" disabled>
+      <p class="hint">Usernames can't be changed after creation.</p>
+    </div>
+    {% endif %}
+    <div class="field">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" required
+             value="{{ user.display_name if user else '' }}">
+    </div>
+    <div class="field">
+      <label for="role_id">Role</label>
+      <select id="role_id" name="role_id" required>
+        {% for r in roles %}
+          <option value="{{ r.id }}" {{ 'selected' if user and user.role_id == r.id else '' }}>{{ r.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="password">{{ 'New password (leave blank to keep current)' if user else 'Password' }}</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" {{ '' if user else 'required' }}>
+      <p class="hint">At least 8 characters.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if user else 'Create user' }}</button>
+    <a href="{{ url_for('admin.users_view') }}" class="btn btn-ghost">Cancel</a>
+  </form>
+</div>
+{% endblock %}

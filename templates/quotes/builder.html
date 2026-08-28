@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit quote' if quote_id else 'New quote' }} — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Quotes</p>
+<h1>{{ 'Edit quote' if quote_id else 'New quote' }}</h1>
+
+<div class="panel">
+  <div class="form-grid">
+    <div class="field">
+      <label for="metaQuoteNo">Quote number</label>
+      <input type="text" id="metaQuoteNo" value="{{ quote_full.quote.quote_number if quote_full else next_number }}">
+    </div>
+    <div class="field">
+      <label for="metaDate">Date</label>
+      <input type="text" id="metaDate" value="{{ quote_full.quote.quote_date if quote_full else '' }}">
+    </div>
+    <div class="field">
+      <label for="metaClient">Client name</label>
+      <input type="text" id="metaClient" value="{{ quote_full.quote.client_name if quote_full else '' }}">
+    </div>
+    <div class="field">
+      <label for="metaLocation">Location</label>
+      <input type="text" id="metaLocation" value="{{ quote_full.quote.location if quote_full else '' }}">
+    </div>
+    <div class="field">
+      <label for="metaProjectName">Project name</label>
+      <input type="text" id="metaProjectName" value="{{ quote_full.quote.project_name if quote_full else '' }}">
+    </div>
+    <div class="field">
+      <label for="metaProjectType">Project type</label>
+      <input type="text" id="metaProjectType" value="{{ quote_full.quote.project_type if quote_full else '' }}">
+    </div>
+    <div class="field">
+      <label for="metaVat">VAT %</label>
+      <input type="number" step="0.01" id="metaVat" value="{{ quote_full.quote.vat_percent if quote_full else 5 }}">
+    </div>
+  </div>
+  <div class="field">
+    <label for="jobNotes">Notes</label>
+    <textarea id="jobNotes">{{ quote_full.quote.job_notes if quote_full else '' }}</textarea>
+  </div>
+</div>
+
+<div class="builder-grid">
+  <div>
+    <div class="panel">
+      <h2>Add from Product Master</h2>
+      <div class="field">
+        <label for="searchQuery">Search (multiple keywords match in any order)</label>
+        <input type="text" id="searchQuery" placeholder="e.g. socket schneider">
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="categorySelect">Group</label>
+          <select id="categorySelect">
+            <option value="">All groups</option>
+            {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="brandSelect">Brand</label>
+          <select id="brandSelect">
+            <option value="">All brands</option>
+            <option value="__NONE__">No brand listed</option>
+            {% for b in brands %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Add custom item</h2>
+      <div class="field">
+        <label for="customDesc">Description</label>
+        <input type="text" id="customDesc">
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="customUnit">Unit</label>
+          <select id="customUnit">
+            {% for u in units %}<option value="{{ u }}" {{ 'selected' if u == 'Nos' else '' }}>{{ u }}</option>{% endfor %}
+            <option value="Other">Other…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="customQty">Qty</label>
+          <input type="number" step="1" id="customQty" value="1">
+        </div>
+      </div>
+      <div class="field">
+        <label for="customPrice">Unit price (AED)</label>
+        <input type="number" step="0.01" id="customPrice">
+      </div>
+      <button type="button" id="customAddBtn" class="btn btn-secondary">Add to selected room</button>
+      <p class="hint">Adds to whichever room is selected below.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Terms &amp; Conditions</h2>
+      <div id="termsBox"></div>
+      <button type="button" id="addTermBtn" class="btn btn-ghost">+ Add term</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Rooms</h2>
+      <div class="form-grid" style="align-items:end;">
+        <div class="field">
+          <label for="roomSelect">Add items to</label>
+          <select id="roomSelect"></select>
+        </div>
+        <div class="field">
+          <button type="button" id="addRoomBtn" class="btn btn-secondary">+ Add room / cabin</button>
+        </div>
+      </div>
+      <div id="cartBox"></div>
+      <div class="totals" style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-top:14px; padding-top:12px; border-top:2px solid var(--ink);">
+        <div style="font-family:'IBM Plex Mono',monospace; color:var(--ink-soft);">Subtotal: <span id="totalSubtotal">0.00</span></div>
+        <div style="font-family:'IBM Plex Mono',monospace; color:var(--ink-soft);">VAT: <span id="totalVat">0.00</span></div>
+        <div style="font-size:1.2rem; font-weight:800; color:var(--structure);">GRAND TOTAL: AED <span id="totalGrand">0.00</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button type="button" id="saveDraftBtn" class="btn btn-secondary">Save Draft</button>
+        <button type="button" id="saveBtn" class="btn btn-primary">Save</button>
+        {% if quote_id %}
+          <a href="{{ url_for('quotes.pdf_view', quote_id=quote_id) }}" class="btn btn-ghost">Download PDF</a>
+        {% else %}
+          <span class="hint" style="margin:0;">Save first to download a PDF.</span>
+        {% endif %}
+      </div>
+      <div id="saveStatus" class="save-status"></div>
+    </div>
+  </div>
+</div>
+
+<script id="timrInitialData" type="application/json">{{ initial_data | tojson }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/quote_builder.js') }}"></script>
+{% endblock %}

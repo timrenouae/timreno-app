@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ po.po_number }} — Purchases — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Purchases</p>
+<h1>{{ po.po_number }}</h1>
+<p class="sub">{{ po.supplier_name }} &middot;
+  {% if po.status == 'received' %}<span class="badge badge-sage">Received</span>
+  {% elif po.status == 'partially_received' %}<span class="badge badge-accent">Partially received</span>
+  {% elif po.status == 'sent' %}<span class="badge badge-structure">Sent</span>
+  {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
+</p>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">Line items</h2>
+    <div>
+      <a href="{{ url_for('purchases.pdf_view', po_id=po.id) }}" class="btn btn-secondary">Download PDF for supplier</a>
+      {% if po.status == 'draft' %}
+      <form method="post" action="{{ url_for('purchases.mark_sent', po_id=po.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-ghost">Mark as sent</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if items %}
+  <table>
+    <thead><tr><th>Description</th><th>Brand</th><th>Unit</th><th>Qty</th><th>Unit price</th><th>Received</th><th></th></tr></thead>
+    <tbody>
+    {% for i in items %}
+      <tr>
+        <td>{{ i.description }}</td>
+        <td>{{ i.brand or '—' }}</td>
+        <td>{{ i.unit }}</td>
+        <td>{{ i.quantity|round(2) }}</td>
+        <td>{{ "%.2f"|format(i.unit_price) }}</td>
+        <td>
+          {{ i.received_qty|round(2) }} / {{ i.quantity|round(2) }}
+          {% if i.received_qty >= i.quantity %}<span class="badge badge-sage">Complete</span>{% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+          {% if i.received_qty < i.quantity %}
+          <form method="post" action="{{ url_for('purchases.receive_item', po_id=po.id, item_id=i.id) }}" style="display:inline-flex; gap:4px; align-items:center;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="number" step="0.01" min="0.01" max="{{ i.quantity - i.received_qty }}" name="received_qty"
+                   value="{{ i.quantity - i.received_qty }}" style="width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:4px; background:var(--paper);">
+            <button type="submit" class="btn btn-secondary">Mark received</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="totals" style="margin-top:10px; text-align:right; font-family:'IBM Plex Mono',monospace;">
+    Total: <strong>{{ "%.2f"|format(total) }}</strong>
+  </div>
+  {% else %}
+    <div class="empty-state">No line items yet — add one below.</div>
+  {% endif %}
+</div>
+
+{% if po.status in ['draft', 'sent'] %}
+<div class="panel">
+  <h2>Add item</h2>
+  <form method="post" action="{{ url_for('purchases.add_item', po_id=po.id) }}" class="form-grid" style="align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field" style="grid-column:1 / -1;">
+      <label for="product_id">Product</label>
+      <select id="product_id" name="product_id" required>
+        <option value="">Select a product…</option>
+        {% for p in products %}
+          <option value="{{ p.id }}">{{ p.category }} — {{ p.description }} ({{ p.brand or 'no brand' }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="quantity">Quantity</label>
+      <input type="number" step="0.01" min="0.01" id="quantity" name="quantity" required>
+    </div>
+    <div class="field">
+      <label for="unit_price">Unit price</label>
+      <input type="number" step="0.01" min="0" id="unit_price" name="unit_price" required>
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-primary">Add line</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="panel">
+  <a href="{{ url_for('purchases.list_view') }}" class="btn btn-ghost">← Back to purchase orders</a>
+</div>
+{% endblock %}

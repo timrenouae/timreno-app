@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit supplier' if supplier else 'New supplier' }} — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Purchases</p>
+<h1>{{ 'Edit supplier' if supplier else 'New supplier' }}</h1>
+
+<div class="panel" style="max-width:480px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="name">Supplier name</label>
+      <input type="text" id="name" name="name" required value="{{ supplier.name if supplier else '' }}">
+    </div>
+    <div class="field">
+      <label for="contact_name">Contact name</label>
+      <input type="text" id="contact_name" name="contact_name" value="{{ supplier.contact_name if supplier else '' }}">
+    </div>
+    <div class="field">
+      <label for="phone">Phone</label>
+      <input type="text" id="phone" name="phone" value="{{ supplier.phone if supplier else '' }}">
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" value="{{ supplier.email if supplier else '' }}">
+    </div>
+    <div class="field">
+      <label for="address">Address</label>
+      <textarea id="address" name="address">{{ supplier.address if supplier else '' }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if supplier else 'Add supplier' }}</button>
+    <a href="{{ url_for('purchases.suppliers_view') }}" class="btn btn-ghost">Cancel</a>
+  </form>
+</div>
+{% endblock %}

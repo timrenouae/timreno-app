@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Quotes — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Quotes</p>
+<h1>Quotes</h1>
+<p class="sub">Every quote, draft or finalized. Pricing always reflects the live Product Master.</p>
+
+<div class="stat-strip" style="display:flex; gap:10px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft); margin-bottom:18px;">
+  <span class="badge badge-muted">Total: {{ stats.total }}</span>
+  <span class="badge badge-muted">Drafts: {{ stats.drafts }}</span>
+  <span class="badge badge-structure">Finalized: {{ stats.finalized }}</span>
+  <span class="badge badge-accent">In Progress: {{ stats.in_progress }}</span>
+  <span class="badge badge-sage">Paid: {{ stats.paid }}</span>
+  <span class="badge badge-sage">Finalized value: AED {{ "%.2f"|format(stats.finalized_value) }}</span>
+</div>
+
+<div class="panel">
+  <form method="get" class="form-grid" style="align-items:end;">
+    <div class="field">
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ search }}" placeholder="quote no / client / project">
+    </div>
+    <div class="field">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="">All</option>
+        <option value="draft" {{ 'selected' if status == 'draft' else '' }}>Draft</option>
+        <option value="final" {{ 'selected' if status == 'final' else '' }}>Finalized</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="stage">Stage</label>
+      <select id="stage" name="stage">
+        <option value="">All</option>
+        {% for s in stages %}
+          <option value="{{ s }}" {{ 'selected' if stage == s else '' }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <button type="submit" class="btn btn-secondary">Filter</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">Results</h2>
+    {% if 'quotes.manage' in current_permissions %}
+      <a href="{{ url_for('quotes.new_view') }}" class="btn btn-primary">+ New quote</a>
+    {% endif %}
+  </div>
+  {% if quotes %}
+  <table>
+    <thead><tr><th>Quote No.</th><th>Client / Project</th><th>Status</th><th>Stage</th><th>Grand Total</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+    {% for entry in quotes %}
+      {% set q = entry.row %}
+      <tr>
+        <td>{{ q.quote_number }}</td>
+        <td>{{ q.client_name or '—' }}<br><span style="color:var(--ink-soft); font-size:0.8rem;">{{ q.project_name or '' }}</span></td>
+        <td>
+          {% if q.status == 'final' %}<span class="badge badge-sage">Finalized</span>
+          {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
+        </td>
+        <td>
+          {% if q.status == 'final' and 'quotes.manage' in current_permissions %}
+          <form method="post" action="{{ url_for('quotes.stage_change', quote_id=q.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <select name="stage" onchange="this.form.submit()">
+              {% for s in stages %}
+                <option value="{{ s }}" {{ 'selected' if q.stage == s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% elif q.status == 'final' %}
+            <span class="badge badge-structure">{{ q.stage }}</span>
+          {% else %}
+            <span style="color:var(--ink-soft); font-size:0.82rem;">— not finalized —</span>
+          {% endif %}
+        </td>
+        <td>AED {{ "%.2f"|format(entry.grand) }}</td>
+        <td>{{ q.updated_at }}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="{{ url_for('quotes.edit_view', quote_id=q.id) }}" class="btn btn-ghost">Open</a>
+          {% if q.status == 'final' %}
+            <a href="{{ url_for('tracker.detail_view', quote_id=q.id) }}" class="btn btn-ghost">Track</a>
+          {% endif %}
+          {% if 'quotes.manage' in current_permissions %}
+          <form method="post" action="{{ url_for('quotes.delete_view', quote_id=q.id) }}" style="display:inline;"
+                onsubmit="return confirm('Delete quote {{ q.quote_number }}? This cannot be undone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No quotes match this filter.</div>
+  {% endif %}
+</div>
+{% endblock %}

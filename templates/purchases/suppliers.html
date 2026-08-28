@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Suppliers — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Purchases</p>
+<h1>Suppliers</h1>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">All suppliers</h2>
+    <a href="{{ url_for('purchases.supplier_new') }}" class="btn btn-primary">+ New supplier</a>
+  </div>
+  {% if suppliers %}
+  <table>
+    <thead><tr><th>Name</th><th>Contact</th><th>Phone</th><th>Email</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for s in suppliers %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.contact_name or '—' }}</td>
+        <td>{{ s.phone or '—' }}</td>
+        <td>{{ s.email or '—' }}</td>
+        <td>{% if s.active %}<span class="badge badge-sage">Active</span>{% else %}<span class="badge badge-muted">Inactive</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="{{ url_for('purchases.supplier_edit', supplier_id=s.id) }}" class="btn btn-ghost">Edit</a>
+          <form method="post" action="{{ url_for('purchases.supplier_toggle_active', supplier_id=s.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn {{ 'btn-danger' if s.active else 'btn-secondary' }}">
+              {{ 'Deactivate' if s.active else 'Reactivate' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No suppliers yet.</div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('purchases.list_view') }}" class="btn btn-ghost">← Back to purchase orders</a>
+</div>
+{% endblock %}

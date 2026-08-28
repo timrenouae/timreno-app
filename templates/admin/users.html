@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Users — Admin — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Admin</p>
+<h1>Users</h1>
+<p class="sub">Create staff accounts and assign each one a role. Roles determine what a person can see and do.</p>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">All users</h2>
+    <a href="{{ url_for('admin.user_new') }}" class="btn btn-primary">+ New user</a>
+  </div>
+  {% if users %}
+  <table>
+    <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td>{{ u.display_name }}</td>
+        <td><span class="badge badge-structure">{{ u.role_name }}</span></td>
+        <td>
+          {% if u.active %}<span class="badge badge-sage">Active</span>
+          {% else %}<span class="badge badge-muted">Deactivated</span>{% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="{{ url_for('admin.user_edit', user_id=u.id) }}" class="btn btn-ghost">Edit</a>
+          <form method="post" action="{{ url_for('admin.user_toggle_active', user_id=u.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn {{ 'btn-danger' if u.active else 'btn-secondary' }}">
+              {{ 'Deactivate' if u.active else 'Reactivate' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No users yet.</div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('admin.roles_view') }}" class="btn btn-secondary">Manage roles &amp; permissions →</a>
+</div>
+{% endblock %}

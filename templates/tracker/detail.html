@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}{{ quote.quote_number }} — Tracker — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Project Tracker</p>
+<div class="project-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap;">
+  <div>
+    <h1 style="margin-bottom:2px;">{{ quote.quote_number }}</h1>
+    <p class="sub" style="margin-bottom:0;">{{ quote.client_name or '—' }} &middot; {{ quote.project_name or '—' }}</p>
+  </div>
+  <form method="post" action="{{ url_for('quotes.stage_change', quote_id=quote.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field" style="margin-bottom:0;">
+      <label for="stageSelect">Stage</label>
+      <select id="stageSelect" name="stage" onchange="this.form.submit()">
+        {% for s in stages %}<option value="{{ s }}" {{ 'selected' if s == quote.stage else '' }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Progress</h2>
+  <div class="progress-bar-track"><div class="progress-bar-fill{{ ' is-complete' if progress.done == progress.total and progress.total > 0 else '' }}" style="width:{{ progress.pct|round(0, 'floor') }}%;"></div></div>
+  <div class="progress-stats" style="display:flex; justify-content:space-between; font-size:0.85rem; color:var(--ink-soft); margin-top:8px;">
+    <span>{{ progress.done }} / {{ progress.total }} tasks complete</span>
+    <span>{{ progress.pct|round(1) }}%</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Budget</h2>
+  <div class="budget-box">
+    <div class="fig"><div class="lbl">Anticipated (quote total)</div><div class="val">{{ "%.2f"|format(budget.anticipated) }}</div></div>
+    <div class="fig"><div class="lbl">Actual expenses</div><div class="val">{{ "%.2f"|format(budget.actual) }}</div></div>
+    <div class="fig {{ 'over' if budget.variance < 0 else 'under' }}"><div class="lbl">Variance</div><div class="val">{{ "%.2f"|format(budget.variance) }}</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Customer access</h2>
+  <p class="hint">Link a customer login so they can check progress on their own — they'll only see this project's checklist and stage, never costs, budget, or team info.</p>
+  <form method="post" action="{{ url_for('tracker.set_client_user', quote_id=quote.id) }}" class="form-grid" style="align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="clientUserSelect">Customer login</label>
+      <select id="clientUserSelect" name="client_user_id">
+        <option value="">— not linked —</option>
+        {% for u in customer_users %}
+          <option value="{{ u.id }}" {{ 'selected' if quote.client_user_id == u.id else '' }}>{{ u.display_name }} ({{ u.username }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field"><button type="submit" class="btn btn-secondary">Save</button></div>
+  </form>
+  {% if not customer_users %}
+    <p class="hint" style="margin-top:8px;">No customer accounts exist yet — under Admin, create a "Customer" role with just the "Customer portal" permission, add a user to it, then come back here to link them.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Team</h2>
+  {% if team %}
+    <div style="margin-bottom:12px;">
+    {% for m in team %}
+      <span class="chip">{{ m.name }} <small>({{ m.role }})</small>
+        <form method="post" action="{{ url_for('tracker.remove_team_member', quote_id=quote.id, member_id=m.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="remove-link" title="Remove">✕</button>
+        </form>
+      </span>
+    {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">No team members yet.</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('tracker.add_team_member', quote_id=quote.id) }}" class="form-grid" style="align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="memberName">Name</label>
+      <input type="text" id="memberName" name="name" required>
+    </div>
+    <div class="field">
+      <label for="memberRole">Role</label>
+      <select id="memberRole" name="role">
+        {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-secondary">+ Add team member</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Tasks</h2>
+  {% if tasks %}
+    {% for room_label, group_tasks in grouped_tasks %}
+    <h3 class="task-group-heading">{{ room_label or 'Custom / Other' }}</h3>
+    {% for t in group_tasks %}
+    <div class="task-row{{ ' is-completed' if t.status == 'completed' else '' }}">
+      <div class="task-main" style="display:flex; gap:12px; align-items:flex-start;">
+        <div class="task-check">
+          {% if t.status == 'completed' %}
+            <span title="Completed">&#10003;</span>
+          {% else %}
+            <form method="post" action="{{ url_for('tracker.complete_task', quote_id=quote.id, task_id=t.id) }}" onsubmit="return confirm('Mark this item installed? Its deadline and assignments will then be locked.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-ghost" title="Mark complete">Mark done</button>
+            </form>
+          {% endif %}
+        </div>
+        <div class="task-body" style="flex:1; min-width:0;">
+          <div class="task-desc{{ ' is-completed' if t.status == 'completed' else '' }}">
+            {{ t.description }}
+            {% if t.source == 'custom' %}<span class="badge badge-accent">Custom</span>{% endif %}
+          </div>
+          <div class="task-meta" style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:0.82rem; color:var(--ink-soft); margin-bottom:8px;">
+            <span>Weight: {{ "%.2f"|format(t.weight or 0) }}</span>
+            {% if t.status == 'completed' %}
+              <span class="completed-stamp">Completed {{ t.completed_at }}</span>
+            {% else %}
+              <form method="post" action="{{ url_for('tracker.set_task_deadline', quote_id=quote.id, task_id=t.id) }}" style="display:inline-flex; gap:6px; align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label for="deadline-{{ t.id }}" style="margin:0;">Deadline</label>
+                <input type="date" id="deadline-{{ t.id }}" name="deadline" value="{{ t.deadline or '' }}" style="padding:4px 6px;">
+                <button type="submit" class="btn btn-ghost">Save</button>
+              </form>
+            {% endif %}
+          </div>
+          <div class="task-assign" style="display:flex; flex-wrap:wrap; gap:6px;">
+            {% for m in team %}
+              {% set assigned_ids = t.assigned | map(attribute='id') | list %}
+              <form method="post" action="{{ url_for('tracker.toggle_assignment', quote_id=quote.id, task_id=t.id, member_id=m.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="chip-toggle{{ ' chip-on' if m.id in assigned_ids else '' }}" {{ 'disabled' if t.status == 'completed' else '' }}>{{ m.name }}</button>
+              </form>
+            {% endfor %}
+          </div>
+          {% if t.status != 'completed' %}
+          <form method="post" action="{{ url_for('tracker.delete_task', quote_id=quote.id, task_id=t.id) }}" onsubmit="return confirm('Delete this task?');" style="margin-top:8px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="remove-link">Delete task</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No tasks yet.</div>
+  {% endif %}
+
+  <h2 style="margin-top:20px;">Add a custom task</h2>
+  <form method="post" action="{{ url_for('tracker.add_task', quote_id=quote.id) }}" class="form-grid" style="align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field" style="grid-column:1 / -1;">
+      <label for="taskDesc">Description</label>
+      <input type="text" id="taskDesc" name="description" required>
+    </div>
+    <div class="field">
+      <label for="taskWeight">Weight (AED, optional)</label>
+      <input type="number" step="0.01" id="taskWeight" name="weight">
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-secondary">+ Add task</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Expenses</h2>
+  {% if expenses %}
+  <table>
+    <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr></thead>
+    <tbody>
+    {% for e in expenses %}
+      <tr>
+        <td>{{ e.expense_date or '—' }}</td>
+        <td>{{ e.description }}</td>
+        <td style="font-family:'IBM Plex Mono',monospace;">{{ "%.2f"|format(e.amount) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('tracker.delete_expense', quote_id=quote.id, expense_id=e.id) }}" onsubmit="return confirm('Delete this expense?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="remove-link">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No expenses recorded yet.</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('tracker.add_expense', quote_id=quote.id) }}" class="form-grid" style="align-items:end; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="expDesc">Description</label>
+      <input type="text" id="expDesc" name="description" required>
+    </div>
+    <div class="field">
+      <label for="expAmount">Amount (AED)</label>
+      <input type="number" step="0.01" id="expAmount" name="amount" required>
+    </div>
+    <div class="field">
+      <label for="expDate">Date</label>
+      <input type="date" id="expDate" name="expense_date">
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-secondary">+ Add expense</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('tracker.list_view') }}" class="btn btn-ghost">← Back to Project Tracker</a>
+  <a href="{{ url_for('quotes.pdf_view', quote_id=quote.id) }}" class="btn btn-ghost">Download quote PDF</a>
+</div>
+{% endblock %}

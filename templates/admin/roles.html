@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Roles — Admin — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Admin</p>
+<h1>Roles &amp; permissions</h1>
+<p class="sub">Roles group permissions. Assign a role to a user in the Users screen to control exactly what that person can do.</p>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">All roles</h2>
+    <a href="{{ url_for('admin.role_new') }}" class="btn btn-primary">+ New role</a>
+  </div>
+  <table>
+    <thead><tr><th>Role</th><th></th></tr></thead>
+    <tbody>
+    {% for r in roles %}
+      <tr>
+        <td>
+          {{ r.name }}
+          {% if r.is_system %}<span class="badge badge-accent">Protected</span>{% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="{{ url_for('admin.role_edit', role_id=r.id) }}" class="btn btn-ghost">Edit</a>
+          {% if not r.is_system %}
+          <form method="post" action="{{ url_for('admin.role_delete', role_id=r.id) }}" style="display:inline;"
+                onsubmit="return confirm('Delete role {{ r.name }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('admin.users_view') }}" class="btn btn-secondary">← Back to users</a>
+</div>
+{% endblock %}

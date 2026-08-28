@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Product Master — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Product Master</p>
+<h1>Products</h1>
+<p class="sub">The stock &amp; pricing catalog used across quotes and purchase orders. {{ total }} item{{ '' if total == 1 else 's' }}.</p>
+
+<div class="panel">
+  <form method="get" class="form-grid" style="align-items:end;">
+    <div class="field">
+      <label for="q">Search description</label>
+      <input type="text" id="q" name="q" value="{{ query }}" placeholder="e.g. plywood">
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        {% for c in categories %}
+          <option value="{{ c }}" {{ 'selected' if c == category else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="brand">Brand</label>
+      <select id="brand" name="brand">
+        <option value="">All brands</option>
+        {% for b in brands %}
+          <option value="{{ b }}" {{ 'selected' if b == brand else '' }}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <button type="submit" class="btn btn-secondary">Filter</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2 style="margin:0;">Results</h2>
+    {% if 'products.manage' in current_permissions %}
+      <a href="{{ url_for('products.new_view') }}" class="btn btn-primary">+ Add product</a>
+    {% endif %}
+  </div>
+  {% if items %}
+  <table>
+    <thead><tr><th>Category</th><th>Description</th><th>Brand</th><th>Unit</th><th>Cost price</th><th></th></tr></thead>
+    <tbody>
+    {% for p in items %}
+      <tr>
+        <td>{{ p.category }}</td>
+        <td>{{ p.description }}</td>
+        <td>{{ p.brand or '—' }}</td>
+        <td>{{ p.unit }}</td>
+        <td>{{ "%.2f"|format(p.cost_price) }}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          {% if 'products.manage' in current_permissions %}
+            <a href="{{ url_for('products.edit_view', product_id=p.id) }}" class="btn btn-ghost">Edit</a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if total > page_size %}
+  <div style="margin-top:12px; display:flex; gap:8px;">
+    {% if page > 1 %}
+      <a class="btn btn-ghost" href="{{ url_for('products.list_view', q=query, category=category, brand=brand, page=page-1) }}">← Previous</a>
+    {% endif %}
+    {% if page * page_size < total %}
+      <a class="btn btn-ghost" href="{{ url_for('products.list_view', q=query, category=category, brand=brand, page=page+1) }}">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+    <div class="empty-state">No products match this filter.</div>
+  {% endif %}
+</div>
+{% endblock %}

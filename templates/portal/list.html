@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}My Projects — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Customer Portal</p>
+<h1>My Projects</h1>
+<p class="sub">Track progress on your project(s) with TIM RENO.</p>
+
+{% if rows %}
+  {% for r in rows %}
+  <a class="panel" style="display:block; text-decoration:none; color:inherit;" href="{{ url_for('portal.detail_view', quote_id=r.quote.id) }}">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div>
+        <b>{{ r.quote.project_name or r.quote.quote_number }}</b>
+        <div class="hint" style="margin:2px 0 0;">{{ r.quote.location or '' }}</div>
+      </div>
+      <span class="badge badge-structure">{{ r.quote.stage }}</span>
+    </div>
+    <div class="progress-bar-track" style="margin-top:10px;">
+      <div class="progress-bar-fill{{ ' is-complete' if r.progress.done == r.progress.total and r.progress.total > 0 else '' }}" style="width:{{ r.progress.pct|round(0, 'floor') }}%;"></div>
+    </div>
+    <div class="hint" style="margin:6px 0 0;">{{ r.progress.done }} / {{ r.progress.total }} items installed &middot; {{ r.progress.pct|round(1) }}%</div>
+  </a>
+  {% endfor %}
+{% else %}
+  <div class="empty-state">No projects linked to your account yet. Contact TIM RENO if you were expecting to see one here.</div>
+{% endif %}
+{% endblock %}
