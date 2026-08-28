@@ -45,7 +45,7 @@ h1{ font-family:"Big Shoulders Display", ui-sans-serif, sans-serif; font-weight:
 .topbar .who{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:11.5px; color:var(--ink-soft); display:flex; align-items:center; gap:10px; }
 .topbar .who a{ color:var(--danger); }
 
-.panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:6px; padding:18px 20px; margin-bottom:18px; }
+.panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:6px; padding:18px 20px; margin-bottom:18px; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .panel h2{ font-family:"Big Shoulders Display", ui-sans-serif, sans-serif; font-weight:700; font-size:1.1rem; text-transform:uppercase; letter-spacing:0.02em; margin:0 0 12px; color:var(--ink); }
 
 .field{ display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
@@ -84,8 +84,8 @@ tr:last-child td{ border-bottom:none; }
 .checkbox-grid label{ display:flex; gap:8px; align-items:flex-start; font-size:0.86rem; }
 .checkbox-grid input{ margin-top:3px; }
 
-.login-shell{ min-height:100vh; display:flex; align-items:center; justify-content:center; }
-.login-card{ width:340px; }
+.login-shell{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; }
+.login-card{ width:340px; max-width:100%; overflow-x:visible; }
 
 .hint{ font-size:0.78rem; color:var(--ink-soft); margin:4px 0 14px; }
 .empty-state{ padding:24px; text-align:center; color:var(--ink-soft); font-size:0.9rem; }
@@ -181,3 +181,27 @@ table.items td.amt{ text-align:right; font-family:"IBM Plex Mono", ui-monospace,
 .budget-box .fig .val{ font-family:"Big Shoulders Display", sans-serif; font-weight:800; font-size:1.2rem; }
 .budget-box .fig.over .val{ color:var(--danger); }
 .budget-box .fig.under .val{ color:var(--sage); }
+
+/* Mobile: the desktop layout above assumes plenty of horizontal room
+   (28px side padding, a single-row topbar, 3-column rate rows, etc.) --
+   these overrides tighten spacing and let wide tables/rows scroll or
+   stack instead of squeezing/overlapping on a phone screen. */
+@media (max-width:640px){
+  .wrap{ padding:14px 12px 40px; }
+  .topbar{ padding:10px 14px; flex-wrap:wrap; row-gap:8px; }
+  .topbar .brand{ font-size:1rem; }
+  .topbar nav{ order:3; width:100%; gap:2px; }
+  .topbar nav a{ padding:6px 8px; font-size:11px; }
+  .topbar .who{ flex-wrap:wrap; font-size:10.5px; gap:6px 10px; }
+  h1{ font-size:1.5rem; }
+  .panel{ padding:14px 14px; }
+  .rate-row{ grid-template-columns:1fr; row-gap:2px; padding:8px 0; }
+  .rate-effective{ text-align:left; }
+  .add-space-row{ grid-template-columns:1fr; }
+  .custom-item-row{ grid-template-columns:1fr; }
+  .space-head .sname{ width:100%; margin-right:0; }
+  .summary-grid{ flex-direction:column; align-items:stretch; }
+  .summary-figures{ gap:14px 20px; }
+  .summary-actions{ width:100%; }
+  .summary-actions .btn{ flex:1; text-align:center; }
+}
