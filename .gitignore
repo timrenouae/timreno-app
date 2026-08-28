@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+timr.db
+timr.db-wal
+timr.db-shm
+.dev_secret_key
+app.log
+app.pid
