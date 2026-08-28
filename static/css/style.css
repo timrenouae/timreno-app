@@ -38,7 +38,9 @@ h1{ font-family:"Big Shoulders Display", ui-sans-serif, sans-serif; font-weight:
 .sub{ color:var(--ink-soft); font-size:0.95rem; margin:0 0 20px; max-width:70ch; }
 
 .topbar{ display:flex; justify-content:space-between; align-items:center; padding:14px 28px; background:var(--paper-raised); border-bottom:1px solid var(--line); }
-.topbar .brand{ font-family:"Big Shoulders Display", ui-sans-serif, sans-serif; font-weight:800; text-transform:uppercase; letter-spacing:0.02em; font-size:1.1rem; }
+.topbar .brand{ display:flex; align-items:center; gap:8px; min-width:0; max-width:260px; }
+.topbar .brand-logo{ height:26px; width:auto; max-width:80px; object-fit:contain; }
+.topbar .brand-name{ font-family:"Big Shoulders Display", ui-sans-serif, sans-serif; font-weight:800; text-transform:uppercase; letter-spacing:0.02em; font-size:1.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .topbar nav{ display:flex; gap:4px; flex-wrap:wrap; }
 .topbar nav a{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-decoration:none; padding:6px 10px; border-radius:4px; }
 .topbar nav a.active, .topbar nav a:hover{ background:var(--structure-soft); color:var(--structure); }

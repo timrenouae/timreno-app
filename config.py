@@ -14,6 +14,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # into the persistent home directory (e.g. /home/<user>/timr_app/timr.db).
 DATABASE_PATH = os.environ.get("TIMR_DB_PATH", os.path.join(BASE_DIR, "timr.db"))
 
+# Where uploaded files (currently just the company logo) are stored.
+# Defaults to the same directory as the database itself so that on Render
+# it automatically lands on the persistent Disk (survives redeploys) with
+# no extra configuration -- static/ would NOT survive a redeploy, since
+# it's part of the git-deployed code, not the persistent Disk.
+UPLOADS_DIR = os.environ.get("TIMR_UPLOADS_DIR", os.path.dirname(DATABASE_PATH))
+
 # Flask's session-signing / CSRF-signing secret. In production this MUST be
 # set via the TIMR_SECRET_KEY environment variable and kept stable across
 # restarts (changing it invalidates every session and CSRF token). For local

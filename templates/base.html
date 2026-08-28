@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}TIM RENO{% endblock %}</title>
+  <title>{% block title %}{{ company_settings.company_name if company_settings else 'TIM RENO' }}{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -12,7 +12,12 @@
 <body>
 {% if current_user %}
 <div class="topbar">
-  <div class="brand">TIM RENO</div>
+  <div class="brand">
+    {% if company_settings and company_settings.logo_filename %}
+      <img src="{{ url_for('settings.logo') }}?v={{ company_settings.updated_at }}" alt="" class="brand-logo">
+    {% endif %}
+    <span class="brand-name">{{ company_settings.company_name if company_settings else 'TIM RENO' }}</span>
+  </div>
   <nav>
     {% if 'tracker.view_own' in current_permissions %}
       <a href="{{ url_for('portal.list_view') }}" class="{{ 'active' if request.blueprint == 'portal' else '' }}">My Projects</a>
@@ -30,6 +35,9 @@
     {% endif %}
     {% if 'users.manage' in current_permissions or 'roles.manage' in current_permissions %}
       <a href="{{ url_for('admin.users_view') }}" class="{{ 'active' if request.blueprint == 'admin' else '' }}">Admin</a>
+    {% endif %}
+    {% if 'settings.manage' in current_permissions %}
+      <a href="{{ url_for('settings.company_view') }}" class="{{ 'active' if request.blueprint == 'settings' else '' }}">Settings</a>
     {% endif %}
   </nav>
   <div class="who">

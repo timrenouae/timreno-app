@@ -32,7 +32,7 @@
     </div>
     <div class="field">
       <label for="metaVat">VAT %</label>
-      <input type="number" step="0.01" id="metaVat" value="{{ quote_full.quote.vat_percent if quote_full else 5 }}">
+      <input type="number" step="0.01" id="metaVat" value="{{ quote_full.quote.vat_percent if quote_full else company_settings.default_vat_percent }}">
     </div>
   </div>
   <div class="field">

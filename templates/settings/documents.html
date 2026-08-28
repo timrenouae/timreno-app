@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Settings — Document builder — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Settings</p>
+<h1>Document builder</h1>
+<p class="sub">Controls the logo, colors, font, and optional content blocks used on every quote, purchase order, and rough estimate PDF.</p>
+
+<div style="display:flex; gap:6px; margin-bottom:18px;">
+  <a href="{{ url_for('settings.company_view') }}" class="btn btn-ghost">Company info</a>
+  <a href="{{ url_for('settings.documents_view') }}" class="btn btn-secondary">Document builder</a>
+</div>
+
+<div class="panel" style="max-width:640px;">
+  <h2>Preview</h2>
+  <p class="hint" style="margin-top:-4px;">Opens a sample PDF built from your currently <em>saved</em> settings — save below first, then preview to check the result.</p>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <a class="btn btn-secondary" target="_blank" href="{{ url_for('settings.preview', doc_type='quote') }}">Preview Quote PDF</a>
+    <a class="btn btn-secondary" target="_blank" href="{{ url_for('settings.preview', doc_type='estimate') }}">Preview Rough Estimate PDF</a>
+    <a class="btn btn-secondary" target="_blank" href="{{ url_for('settings.preview', doc_type='po') }}">Preview Purchase Order PDF</a>
+  </div>
+</div>
+
+<div class="panel" style="max-width:640px;">
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <h2>Logo</h2>
+    {% if settings.logo_filename %}
+      <div style="margin-bottom:10px;">
+        <img src="{{ url_for('settings.logo') }}?v={{ settings.updated_at }}" alt="Current logo"
+             style="max-height:60px; max-width:220px; background:#fff; border:1px solid var(--line); border-radius:4px; padding:6px;">
+      </div>
+    {% endif %}
+    <div class="field">
+      <label for="logo_file">{{ 'Replace logo' if settings.logo_filename else 'Upload logo' }}</label>
+      <input type="file" id="logo_file" name="logo_file" accept=".png,.jpg,.jpeg">
+      <p class="hint">PNG or JPG, up to 2 MB. Shown on the top-left of every PDF header and in the app's top bar.</p>
+    </div>
+
+    <h2>Colors &amp; font</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label for="accent_color_hex">Accent color</label>
+        <input type="color" id="accent_color_hex" name="accent_color_hex" value="{{ settings.accent_color_hex }}" style="height:38px;">
+      </div>
+      <div class="field">
+        <label for="structure_color_hex">Structure color</label>
+        <input type="color" id="structure_color_hex" name="structure_color_hex" value="{{ settings.structure_color_hex }}" style="height:38px;">
+        <p class="hint">Used for headings, room/space bands, and totals on every PDF.</p>
+      </div>
+      <div class="field">
+        <label for="pdf_font">PDF font</label>
+        <select id="pdf_font" name="pdf_font">
+          {% for f in font_choices %}
+            <option value="{{ f }}" {{ 'selected' if settings.pdf_font == f else '' }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+        <p class="hint">Limited to fonts every PDF reader already has built in, so a PDF can never come out with missing text.</p>
+      </div>
+    </div>
+
+    <h2>Payment details block</h2>
+    <div class="checkbox-grid">
+      <label>
+        <input type="checkbox" name="show_bank_details_on_quote" {{ 'checked' if settings.show_bank_details_on_quote else '' }}>
+        Show on Quote PDFs
+      </label>
+      <label>
+        <input type="checkbox" name="show_bank_details_on_estimate" {{ 'checked' if settings.show_bank_details_on_estimate else '' }}>
+        Show on Rough Estimate PDFs
+      </label>
+    </div>
+    <p class="hint" style="margin-top:-8px;">Bank details themselves are edited on the <a href="{{ url_for('settings.company_view') }}">Company info</a> page.</p>
+    <div class="field" style="max-width:320px;">
+      <label for="quote_trailing_block_order">On a quote, show first</label>
+      <select id="quote_trailing_block_order" name="quote_trailing_block_order">
+        <option value="terms_then_bank" {{ 'selected' if settings.quote_trailing_block_order == 'terms_then_bank' else '' }}>Terms &amp; Conditions, then Payment Details</option>
+        <option value="bank_then_terms" {{ 'selected' if settings.quote_trailing_block_order == 'bank_then_terms' else '' }}>Payment Details, then Terms &amp; Conditions</option>
+      </select>
+    </div>
+
+    <h2>Rough Estimate disclaimer</h2>
+    <div class="field">
+      <label for="estimate_disclaimer_text">Disclaimer text</label>
+      <textarea id="estimate_disclaimer_text" name="estimate_disclaimer_text" rows="3">{{ settings.estimate_disclaimer_text }}</textarea>
+      <p class="hint">Printed at the bottom of every Rough Estimate PDF. Leave blank to omit it entirely.</p>
+    </div>
+
+    <h2>Default Terms &amp; Conditions</h2>
+    <div class="field">
+      <label for="default_terms">One term per line</label>
+      <textarea id="default_terms" name="default_terms" rows="6">{{ default_terms | join('\n') }}</textarea>
+      <p class="hint">Pre-fills every brand-new quote's Terms &amp; Conditions editor, in this order. Staff can still edit or remove them on any individual quote before saving.</p>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save document settings</button>
+  </form>
+</div>
+{% endblock %}

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="login-shell">
   <div class="panel login-card">
-    <p class="eyebrow">TIM RENO</p>
+    <p class="eyebrow">{{ company_settings.company_name if company_settings else 'TIM RENO' }}</p>
     <h1 style="font-size:1.4rem;">Sign in</h1>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -29,6 +29,8 @@ PERMISSIONS = {
     "quotes.manage": "Create/edit quotes, run the Rough Estimator, and manage Project Tracker tasks/team/expenses",
     "tracker.view_own": "Customer portal: log in and view read-only progress on projects linked to this account "
                          "(no pricing, budget, or team info) -- give this to a Customer role, nothing else",
+    "settings.manage": "Edit company details (name, address, TRN, bank details) and the Document Builder "
+                        "(logo, colors, font, terms & conditions, disclaimers) used across the app's PDFs",
 }
 
 

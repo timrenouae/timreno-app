@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Settings — Company info — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Settings</p>
+<h1>Company info</h1>
+<p class="sub">These details appear across the app and on every quote, purchase order, and rough estimate PDF.</p>
+
+<div style="display:flex; gap:6px; margin-bottom:18px;">
+  <a href="{{ url_for('settings.company_view') }}" class="btn btn-secondary">Company info</a>
+  <a href="{{ url_for('settings.documents_view') }}" class="btn btn-ghost">Document builder</a>
+</div>
+
+<div class="panel" style="max-width:640px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <h2>Identity</h2>
+    <div class="field">
+      <label for="company_name">Company name</label>
+      <input type="text" id="company_name" name="company_name" required value="{{ settings.company_name }}">
+    </div>
+    <div class="field">
+      <label for="company_tagline">Tagline</label>
+      <input type="text" id="company_tagline" name="company_tagline" value="{{ settings.company_tagline or '' }}">
+      <p class="hint">Shown under the company name on PDF headers, e.g. "Villa Construction · Renovations · Office Fit-out".</p>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="address_line1">Address line 1</label>
+        <input type="text" id="address_line1" name="address_line1" value="{{ settings.address_line1 or '' }}">
+      </div>
+      <div class="field">
+        <label for="address_line2">Address line 2</label>
+        <input type="text" id="address_line2" name="address_line2" value="{{ settings.address_line2 or '' }}">
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input type="text" id="phone" name="phone" value="{{ settings.phone or '' }}">
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" value="{{ settings.email or '' }}">
+      </div>
+      <div class="field">
+        <label for="website">Website</label>
+        <input type="text" id="website" name="website" value="{{ settings.website or '' }}">
+      </div>
+      <div class="field">
+        <label for="trn_number">TRN / Tax Registration Number</label>
+        <input type="text" id="trn_number" name="trn_number" value="{{ settings.trn_number or '' }}">
+      </div>
+    </div>
+
+    <h2>Financial</h2>
+    <div class="field" style="max-width:200px;">
+      <label for="default_vat_percent">Default VAT %</label>
+      <input type="number" id="default_vat_percent" name="default_vat_percent" step="0.1" min="0"
+             value="{{ settings.default_vat_percent }}">
+      <p class="hint">Prefills new quotes and rough estimates. Any single quote can still be changed on that quote.</p>
+    </div>
+
+    <h2>Bank / payment details</h2>
+    <p class="hint" style="margin-top:-4px;">Shown on documents only when "Show payment details" is switched on for that document type in the Document Builder.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label for="bank_name">Bank name</label>
+        <input type="text" id="bank_name" name="bank_name" value="{{ settings.bank_name or '' }}">
+      </div>
+      <div class="field">
+        <label for="bank_account_name">Account name</label>
+        <input type="text" id="bank_account_name" name="bank_account_name" value="{{ settings.bank_account_name or '' }}">
+      </div>
+      <div class="field">
+        <label for="bank_iban">IBAN</label>
+        <input type="text" id="bank_iban" name="bank_iban" value="{{ settings.bank_iban or '' }}">
+      </div>
+      <div class="field">
+        <label for="bank_swift">SWIFT / BIC</label>
+        <input type="text" id="bank_swift" name="bank_swift" value="{{ settings.bank_swift or '' }}">
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save company info</button>
+  </form>
+</div>
+{% endblock %}

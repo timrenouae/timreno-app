@@ -8,6 +8,7 @@ import repositories.quotes as quotes_repo
 import repositories.estimator_rates as rates_repo
 from estimator_constants import RATE_DEFAULTS, SPACE_TEMPLATES, FINISH_MULTIPLIERS
 from units import UNIT_OPTIONS
+import pdf.theme as pdf_theme
 from pdf.estimate import build_estimate_pdf
 
 bp = Blueprint("estimator", __name__, url_prefix="/estimator")
@@ -98,7 +99,9 @@ def pdf_view():
     spaces = _spaces_from_body(body)
     if not spaces:
         return jsonify({"error": "Add at least one space before exporting."}), 400
-    pdf_bytes = build_estimate_pdf(meta, spaces)
+    with db.connect() as conn:
+        ctx = pdf_theme.get_pdf_context(conn)
+    pdf_bytes = build_estimate_pdf(ctx, meta, spaces)
     safe_name = "".join(c for c in (meta.get("project_name") or "estimate") if c.isalnum() or c in "-_") or "estimate"
     return Response(
         pdf_bytes, mimetype="application/pdf",

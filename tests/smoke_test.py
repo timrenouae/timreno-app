@@ -20,6 +20,7 @@ Covers, per the approved plan's verification section:
 Run against a throwaway database (never the dev/prod one):
     TIMR_DB_PATH=/tmp/timr_smoke_test.db python3 tests/smoke_test.py
 """
+import io
 import os
 import re
 import sys
@@ -44,6 +45,7 @@ import repositories.roles as roles_repo  # noqa: E402
 import repositories.products as products_repo  # noqa: E402
 import repositories.quotes as quotes_repo  # noqa: E402
 import repositories.tracker as tracker_repo  # noqa: E402
+import repositories.settings as settings_repo  # noqa: E402
 from app import app  # noqa: E402
 
 app.testing = True
@@ -689,6 +691,105 @@ check("customer is blocked (403) from downloading the quote PDF", resp.status_co
 
 resp = customer_client.get(f"/portal/{high_quote_id}")
 check("customer is blocked (403) from a quote NOT linked to them (ownership check)", resp.status_code == 403)
+
+# --------------------------------------------- 16. Settings & Document Builder
+resp = client.get("/settings/")
+check("settings company page loads (200)", resp.status_code == 200)
+settings_csrf = get_csrf(resp.get_data(as_text=True))
+
+resp = client.post("/settings/", data={
+    "csrf_token": settings_csrf,
+    "company_name": "Smoke Test Renovations LLC",
+    "company_tagline": "Smoke tagline",
+    "address_line1": "1 Test Rd", "address_line2": "", "phone": "+971500000000",
+    "email": "smoke@example.com", "website": "example.com", "trn_number": "TRN000",
+    "default_vat_percent": "8",
+    "bank_name": "Smoke Bank", "bank_account_name": "Smoke Test Renovations LLC",
+    "bank_iban": "AE00SMOKE", "bank_swift": "SMOKEAE",
+}, follow_redirects=True)
+check("company info save round-trips (200)", resp.status_code == 200)
+with db.connect() as conn:
+    saved = settings_repo.get_settings(conn)
+check("company_name persisted", saved["company_name"] == "Smoke Test Renovations LLC")
+check("default_vat_percent persisted as a float", saved["default_vat_percent"] == 8.0)
+resp = client.get("/", follow_redirects=True)
+check("new company name appears in the top bar", b"Smoke Test Renovations LLC" in resp.data)
+
+resp = client.get("/settings/documents")
+check("settings documents page loads (200)", resp.status_code == 200)
+docs_csrf = get_csrf(resp.get_data(as_text=True))
+
+def _make_1px_png():
+    """Builds a real, valid 1x1 grayscale PNG from scratch (zlib + struct,
+    no imaging library needed) -- exercises save_logo()'s actual
+    image-decode path rather than faking a file with arbitrary bytes."""
+    import struct
+    import zlib
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+    raw = b"\x00\x00"  # filter byte (0) + one grayscale pixel byte (0)
+    idat = chunk(b"IDAT", zlib.compress(raw))
+    iend = chunk(b"IEND", b"")
+    return sig + ihdr + idat + iend
+
+
+_PNG_1PX = _make_1px_png()
+resp = client.post("/settings/documents", data={
+    "csrf_token": docs_csrf,
+    "logo_file": (io.BytesIO(_PNG_1PX), "smoke_logo.png"),
+    "accent_color_hex": "#123456", "structure_color_hex": "#654321",
+    "pdf_font": "Times",
+    "show_bank_details_on_quote": "on", "show_bank_details_on_estimate": "on",
+    "quote_trailing_block_order": "bank_then_terms",
+    "estimate_disclaimer_text": "Smoke disclaimer.",
+    "default_terms": "Smoke term one.\nSmoke term two.\n\nSmoke term three.",
+}, content_type="multipart/form-data", follow_redirects=True)
+check("document builder save round-trips (200)", resp.status_code == 200)
+with db.connect() as conn:
+    saved2 = settings_repo.get_settings(conn)
+    saved_terms = settings_repo.get_default_terms(conn)
+check("logo_filename saved", bool(saved2["logo_filename"]))
+check("pdf_font persisted", saved2["pdf_font"] == "Times")
+check("bank-details toggles persisted", saved2["show_bank_details_on_quote"] == 1 and saved2["show_bank_details_on_estimate"] == 1)
+check("trailing block order persisted", saved2["quote_trailing_block_order"] == "bank_then_terms")
+check("estimate disclaimer persisted", saved2["estimate_disclaimer_text"] == "Smoke disclaimer.")
+check("default terms saved in order, blank line skipped", saved_terms == ["Smoke term one.", "Smoke term two.", "Smoke term three."])
+
+resp = client.get("/settings/logo")
+check("uploaded logo is served back (200)", resp.status_code == 200 and resp.data[:8] == bytes.fromhex("89504e470d0a1a0a"))
+
+# A brand-new quote's editor should now prefill with the edited default terms.
+resp = client.get("/quotes/new")
+check("new-quote page reflects edited default terms", b"Smoke term one." in resp.data)
+
+for doc_type in ("quote", "estimate", "po"):
+    resp = client.get(f"/settings/preview/{doc_type}")
+    check(f"{doc_type} preview PDF returns 200", resp.status_code == 200)
+    check(f"{doc_type} preview PDF is application/pdf", resp.content_type == "application/pdf")
+    check(f"{doc_type} preview PDF is non-trivial size", len(resp.data) > 1000)
+    check(f"{doc_type} preview PDF starts with %PDF magic bytes", resp.data[:4] == b"%PDF")
+
+resp = client.get("/settings/preview/not-a-real-type")
+check("preview rejects an unknown doc_type (404)", resp.status_code == 404)
+
+resp = client.post("/settings/documents", data={
+    "csrf_token": docs_csrf,
+    "logo_file": (io.BytesIO(b"not an image"), "not_an_image.txt"),
+    "accent_color_hex": "#123456", "structure_color_hex": "#654321", "pdf_font": "Times",
+    "quote_trailing_block_order": "bank_then_terms", "estimate_disclaimer_text": "x", "default_terms": "",
+}, content_type="multipart/form-data", follow_redirects=True)
+with db.connect() as conn:
+    saved3 = settings_repo.get_settings(conn)
+check("invalid logo extension rejected, previous logo kept", saved3["logo_filename"] == saved2["logo_filename"])
+
+resp = buyer_client.get("/settings/")
+check("buyer is blocked (403) from Settings (settings.manage required)", resp.status_code == 403)
+resp = buyer_client.post("/settings/", data={"csrf_token": "bad", "company_name": "Hijacked"})
+check("buyer is blocked (403) from saving Settings", resp.status_code == 403)
 
 print()
 if failures:

@@ -7,6 +7,7 @@ import repositories.suppliers as suppliers_repo
 import repositories.products as products_repo
 import repositories.audit as audit_repo
 from pdf.purchase_order import build_purchase_order_pdf
+import pdf.theme as pdf_theme
 
 bp = Blueprint("purchases", __name__, url_prefix="/purchases")
 
@@ -233,9 +234,10 @@ def pdf_view(po_id):
         if po is None:
             abort(404)
         items = po_repo.list_po_items(conn, po_id)
+        ctx = pdf_theme.get_pdf_context(conn)
         audit_repo.log(conn, auth.current_user()["id"], "download_pdf", "purchase_order", po_id)
 
-    pdf_bytes = build_purchase_order_pdf(dict(po), [dict(i) for i in items])
+    pdf_bytes = build_purchase_order_pdf(ctx, dict(po), [dict(i) for i in items])
     return Response(
         pdf_bytes,
         mimetype="application/pdf",

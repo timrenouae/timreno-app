@@ -10,6 +10,8 @@ from flask import Flask, redirect, url_for, g
 
 import auth
 import config
+import db
+import repositories.settings as settings_repo
 from units import UNIT_OPTIONS
 
 
@@ -26,6 +28,7 @@ def create_app():
     from blueprints.tracker import bp as tracker_bp
     from blueprints.portal import bp as portal_bp
     from blueprints.restore import bp as restore_bp
+    from blueprints.settings import bp as settings_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -36,6 +39,7 @@ def create_app():
     app.register_blueprint(tracker_bp)
     app.register_blueprint(portal_bp)
     app.register_blueprint(restore_bp)
+    app.register_blueprint(settings_bp)
 
     @app.before_request
     def load_user():
@@ -43,11 +47,19 @@ def create_app():
 
     @app.context_processor
     def inject_user_context():
+        # company_settings is read on every request so every template --
+        # the top bar, the login page, any PDF-adjacent page -- can show
+        # the current company name/logo without each view fetching it
+        # separately. It's a single indexed-by-PK SQLite read, cheap
+        # enough not to worry about caching.
+        with db.connect() as conn:
+            company_settings = settings_repo.get_settings(conn)
         return {
             "current_user": getattr(g, "user", None),
             "current_role": getattr(g, "role", None),
             "current_permissions": getattr(g, "permissions", set()),
             "units": UNIT_OPTIONS,
+            "company_settings": company_settings,
         }
 
     @app.route("/")

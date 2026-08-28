@@ -9,13 +9,10 @@ the full design rationale.
 """
 import re
 
-DEFAULT_TERMS = [
-    "This quotation is valid for 30 days from the date of issue.",
-    "50% advance payment is required to commence work; the balance is due on completion.",
-    "Prices exclude government permits, NOC, or authority approvals unless stated otherwise.",
-    "Any changes to scope after approval will be quoted and agreed separately.",
-    "Delivery timelines will be confirmed on order confirmation and may vary with site conditions.",
-]
+# The default terms-and-conditions text used to live here as a hardcoded
+# list (DEFAULT_TERMS). It's now owner-editable via Settings -- see
+# repositories/settings.py: get_default_terms() / save_default_terms(),
+# backed by the settings_default_terms table (migrations/0004_settings.sql).
 
 STAGES = ["Quote", "Approved", "In Progress", "Completed", "Paid"]
 

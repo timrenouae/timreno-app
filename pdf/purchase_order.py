@@ -4,6 +4,12 @@ Purchase-order PDF, built with reportlab's Platypus flowables
 coordinates -- Platypus handles text wrapping and row height itself, which
 is what avoids the overlap/alignment bugs the manual-coordinate approach
 produced elsewhere in this project earlier.
+
+Company identity, brand colors/font, and logo come from a
+pdf.theme.PdfContext (see pdf/theme.py) built from the live
+company_settings row, via the same shared header used by the quote and
+estimate PDFs -- previously this file hardcoded a different, inconsistent
+company name ("TIM RENOVATIONS") than the other two documents.
 """
 import io
 
@@ -13,25 +19,37 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
-INK = colors.HexColor("#1b2a38")
-STRUCTURE = colors.HexColor("#2e5c7a")
-LINE = colors.HexColor("#c9cdc5")
-PAPER_RAISED = colors.HexColor("#f8f9f7")
-
-styles = getSampleStyleSheet()
-title_style = ParagraphStyle("POTitle", parent=styles["Heading1"], fontSize=20, textColor=INK, spaceAfter=2)
-eyebrow_style = ParagraphStyle("Eyebrow", parent=styles["Normal"], fontSize=9, textColor=STRUCTURE,
-                                spaceAfter=10, leading=12)
-label_style = ParagraphStyle("Label", parent=styles["Normal"], fontSize=8, textColor=colors.grey, leading=10)
-value_style = ParagraphStyle("Value", parent=styles["Normal"], fontSize=10, textColor=INK, leading=13)
-cell_style = ParagraphStyle("Cell", parent=styles["Normal"], fontSize=9, textColor=INK, leading=12)
-header_cell_style = ParagraphStyle("HeaderCell", parent=styles["Normal"], fontSize=8.5, textColor=colors.white, leading=11)
+import pdf.theme as theme
 
 
-def build_purchase_order_pdf(po: dict, items: list) -> bytes:
-    """po: dict with po_number, supplier_name, contact_name, phone, email,
+def _styles(ctx):
+    base = getSampleStyleSheet()
+    return {
+        "company_name": ParagraphStyle("CompanyName", parent=base["Normal"], fontSize=14, textColor=ctx.ink,
+                                        fontName=ctx.font_bold, leading=17),
+        "company_sub": ParagraphStyle("CompanySub", parent=base["Normal"], fontSize=9, textColor=colors.grey,
+                                       fontName=ctx.font, leading=12),
+        "doc_label": ParagraphStyle("DocLabel", parent=base["Normal"], fontSize=16, textColor=ctx.structure,
+                                     fontName=ctx.font_bold, alignment=2, leading=19),
+        "doc_meta": ParagraphStyle("DocMeta", parent=base["Normal"], fontSize=9, textColor=ctx.ink_soft,
+                                    fontName=ctx.font, alignment=2, leading=13),
+        "label": ParagraphStyle("Label", parent=base["Normal"], fontSize=8, textColor=colors.grey,
+                                 fontName=ctx.font, leading=10),
+        "value": ParagraphStyle("Value", parent=base["Normal"], fontSize=10, textColor=ctx.ink,
+                                 fontName=ctx.font, leading=13),
+        "cell": ParagraphStyle("Cell", parent=base["Normal"], fontSize=9, textColor=ctx.ink,
+                                fontName=ctx.font, leading=12),
+        "header_cell": ParagraphStyle("HeaderCell", parent=base["Normal"], fontSize=8.5, textColor=colors.white,
+                                       fontName=ctx.font, leading=11),
+    }
+
+
+def build_purchase_order_pdf(ctx, po: dict, items: list) -> bytes:
+    """ctx: a pdf.theme PdfContext (see pdf/theme.py: get_pdf_context()).
+    po: dict with po_number, supplier_name, contact_name, phone, email,
     address, status, created_at, notes. items: list of dicts with
     description, unit, brand, quantity, unit_price."""
+    styles = _styles(ctx)
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -39,9 +57,9 @@ def build_purchase_order_pdf(po: dict, items: list) -> bytes:
     )
 
     story = []
-    story.append(Paragraph("TIM RENOVATIONS &mdash; PURCHASE ORDER", eyebrow_style))
-    story.append(Paragraph(po["po_number"], title_style))
-    story.append(Spacer(1, 10))
+    doc_meta_html = f"{po['po_number']}<br/>{str(po.get('created_at', ''))[:10]}"
+    story.append(theme.build_header(ctx, styles, "PURCHASE ORDER", doc_meta_html))
+    story.append(Spacer(1, 14))
 
     supplier_lines = [po["supplier_name"]]
     if po.get("contact_name"):
@@ -54,30 +72,23 @@ def build_purchase_order_pdf(po: dict, items: list) -> bytes:
         supplier_lines.append(po["address"])
 
     meta_table = Table(
-        [
-            [Paragraph("SUPPLIER", label_style), Paragraph("ORDER DATE", label_style)],
-            [
-                Paragraph("<br/>".join(supplier_lines), value_style),
-                Paragraph(str(po.get("created_at", ""))[:10], value_style),
-            ],
-        ],
-        colWidths=[110 * mm, 60 * mm],
+        [[Paragraph("SUPPLIER", styles["label"]), Paragraph("<br/>".join(supplier_lines), styles["value"])]],
+        colWidths=[30 * mm, 140 * mm],
     )
     meta_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 14),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 14),
     ]))
     story.append(meta_table)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 4))
 
     header_row = [
-        Paragraph("DESCRIPTION", header_cell_style),
-        Paragraph("BRAND", header_cell_style),
-        Paragraph("UNIT", header_cell_style),
-        Paragraph("QTY", header_cell_style),
-        Paragraph("UNIT PRICE", header_cell_style),
-        Paragraph("LINE TOTAL", header_cell_style),
+        Paragraph("DESCRIPTION", styles["header_cell"]),
+        Paragraph("BRAND", styles["header_cell"]),
+        Paragraph("UNIT", styles["header_cell"]),
+        Paragraph("QTY", styles["header_cell"]),
+        Paragraph("UNIT PRICE", styles["header_cell"]),
+        Paragraph("LINE TOTAL", styles["header_cell"]),
     ]
     rows = [header_row]
     grand_total = 0.0
@@ -85,22 +96,22 @@ def build_purchase_order_pdf(po: dict, items: list) -> bytes:
         line_total = float(item["quantity"]) * float(item["unit_price"])
         grand_total += line_total
         rows.append([
-            Paragraph(item["description"], cell_style),
-            Paragraph(item.get("brand") or "—", cell_style),
-            Paragraph(item["unit"], cell_style),
-            Paragraph(f"{item['quantity']:g}", cell_style),
-            Paragraph(f"{item['unit_price']:.2f}", cell_style),
-            Paragraph(f"{line_total:.2f}", cell_style),
+            Paragraph(item["description"], styles["cell"]),
+            Paragraph(item.get("brand") or "—", styles["cell"]),
+            Paragraph(item["unit"], styles["cell"]),
+            Paragraph(f"{item['quantity']:g}", styles["cell"]),
+            Paragraph(f"{item['unit_price']:.2f}", styles["cell"]),
+            Paragraph(f"{line_total:.2f}", styles["cell"]),
         ])
 
     items_table = Table(rows, colWidths=[62 * mm, 26 * mm, 18 * mm, 16 * mm, 26 * mm, 26 * mm], repeatRows=1)
     items_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), STRUCTURE),
+        ("BACKGROUND", (0, 0), (-1, 0), ctx.structure),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("GRID", (0, 0), (-1, -1), 0.5, LINE),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, PAPER_RAISED]),
+        ("GRID", (0, 0), (-1, -1), 0.5, ctx.line),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ctx.paper_raised]),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -109,20 +120,20 @@ def build_purchase_order_pdf(po: dict, items: list) -> bytes:
     story.append(Spacer(1, 10))
 
     total_table = Table(
-        [["", Paragraph(f"<b>TOTAL &nbsp; {grand_total:,.2f}</b>", value_style)]],
+        [["", Paragraph(f"<b>TOTAL &nbsp; {grand_total:,.2f}</b>", styles["value"])]],
         colWidths=[144 * mm, 30 * mm],
     )
     total_table.setStyle(TableStyle([
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("LINEABOVE", (0, 0), (-1, 0), 1, INK),
+        ("LINEABOVE", (0, 0), (-1, 0), 1, ctx.ink),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(total_table)
 
     if po.get("notes"):
         story.append(Spacer(1, 16))
-        story.append(Paragraph("NOTES", label_style))
-        story.append(Paragraph(po["notes"], value_style))
+        story.append(Paragraph("NOTES", styles["label"]))
+        story.append(Paragraph(po["notes"], styles["value"]))
 
     doc.build(story)
     return buf.getvalue()

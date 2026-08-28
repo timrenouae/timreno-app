@@ -5,6 +5,8 @@ import db
 import repositories.quotes as quotes_repo
 import repositories.products as products_repo
 import repositories.audit as audit_repo
+import repositories.settings as settings_repo
+import pdf.theme as pdf_theme
 from pdf.quote import build_quote_pdf
 
 bp = Blueprint("quotes", __name__, url_prefix="/quotes")
@@ -69,10 +71,11 @@ def new_view():
         next_number = quotes_repo.peek_next_quote_number(conn)
         categories = products_repo.list_categories(conn)
         brands = products_repo.list_brands(conn)
+        default_terms = settings_repo.get_default_terms(conn)
     csrf_token = auth.generate_csrf_token()
     initial_data = {
         "quoteId": None, "csrfToken": csrf_token,
-        "defaultTerms": quotes_repo.DEFAULT_TERMS, "existing": None,
+        "defaultTerms": default_terms, "existing": None,
     }
     return render_template(
         "quotes/builder.html", quote_id=None, next_number=next_number, quote_full=None,
@@ -87,12 +90,13 @@ def edit_view(quote_id):
         full = quotes_repo.get_quote_full(conn, quote_id)
         categories = products_repo.list_categories(conn)
         brands = products_repo.list_brands(conn)
+        default_terms = settings_repo.get_default_terms(conn)
     if full is None:
         abort(404)
     csrf_token = auth.generate_csrf_token()
     initial_data = {
         "quoteId": quote_id, "csrfToken": csrf_token,
-        "defaultTerms": quotes_repo.DEFAULT_TERMS,
+        "defaultTerms": default_terms,
         "existing": {"rooms": full["rooms"], "terms": full["terms"]},
     }
     return render_template(
@@ -200,10 +204,11 @@ def pdf_view(quote_id):
         full = quotes_repo.get_quote_full(conn, quote_id)
         if full is None:
             abort(404)
+        ctx = pdf_theme.get_pdf_context(conn)
         audit_repo.log(conn, auth.current_user()["id"], "download_pdf", "quote", quote_id)
 
     meta = dict(full["quote"])
-    pdf_bytes = build_quote_pdf(meta, full["rooms"], full["terms"])
+    pdf_bytes = build_quote_pdf(ctx, meta, full["rooms"], full["terms"])
     safe_name = "".join(c for c in meta["quote_number"] if c.isalnum() or c in "-_") or "quote"
     return Response(
         pdf_bytes, mimetype="application/pdf",
