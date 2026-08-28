@@ -46,7 +46,21 @@ def login():
         return render_template("login.html", csrf_token=auth.generate_csrf_token(), next=next_url), 401
 
     default_url = url_for(auth.default_landing_endpoint(landing_perms))
-    resp = make_response(redirect(next_url if next_url.startswith("/") else default_url))
+    # A portal-only account (Customer/Engineer/Vendor) always lands on its
+    # own dashboard -- `next` is never honored for them, even though it IS
+    # honored for internal staff below. Without this, a portal-only user
+    # who reached /auth/login via some internal-only page redirecting them
+    # here (a stale bookmark from before the public site existed, an old
+    # link, a decorator's own "please log in" redirect) would get sent
+    # straight back to that same page after authenticating successfully --
+    # and immediately hit a 403 there, since their role was never meant to
+    # see it. Internal staff keep the normal "return me to what I was
+    # trying to reach" behavior.
+    if auth.is_portal_only_user(landing_perms):
+        target = default_url
+    else:
+        target = next_url if next_url.startswith("/") else default_url
+    resp = make_response(redirect(target))
     resp.set_cookie(
         auth.SESSION_COOKIE_NAME,
         token,
