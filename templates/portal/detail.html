@@ -24,6 +24,11 @@
         <div class="task-row{{ ' is-completed' if t.status == 'completed' else '' }}" style="display:flex; gap:10px; align-items:center; padding:6px 0;">
           <span>{% if t.status == 'completed' %}&#10003;{% else %}&#9675;{% endif %}</span>
           <span class="task-desc{{ ' is-completed' if t.status == 'completed' else '' }}">{{ t.description }}</span>
+          {% if t.status == 'completed' and t.photo_filename %}
+            <a href="{{ url_for('tracker.task_photo', task_id=t.id) }}" target="_blank" rel="noopener">
+              <img src="{{ url_for('tracker.task_photo', task_id=t.id) }}" alt="Completion photo" class="task-photo-thumb">
+            </a>
+          {% endif %}
         </div>
       {% endfor %}
     {% endfor %}

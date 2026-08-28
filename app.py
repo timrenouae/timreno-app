@@ -6,7 +6,9 @@ Run locally:
     python3 scripts/bootstrap_admin.py # create the first Admin user (first run only)
     python3 app.py                     # start the dev server
 """
-from flask import Flask, redirect, url_for, g
+import datetime
+
+from flask import Flask, g
 
 import auth
 import config
@@ -29,6 +31,10 @@ def create_app():
     from blueprints.portal import bp as portal_bp
     from blueprints.restore import bp as restore_bp
     from blueprints.settings import bp as settings_bp
+    from blueprints.requisitions import bp as requisitions_bp
+    from blueprints.vendor_portal import bp as vendor_portal_bp
+    from blueprints.public import bp as public_bp
+    from blueprints.leads import bp as leads_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -40,6 +46,13 @@ def create_app():
     app.register_blueprint(portal_bp)
     app.register_blueprint(restore_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(requisitions_bp)
+    app.register_blueprint(vendor_portal_bp)
+    # No url_prefix -- public.py owns the site root ('/'), including the
+    # "logged-in visitor gets redirected to their dashboard" behavior the
+    # old index() route below used to own directly.
+    app.register_blueprint(public_bp)
+    app.register_blueprint(leads_bp)
 
     @app.before_request
     def load_user():
@@ -60,18 +73,11 @@ def create_app():
             "current_permissions": getattr(g, "permissions", set()),
             "units": UNIT_OPTIONS,
             "company_settings": company_settings,
+            # Used by the public site's footer copyright line
+            # (templates/public/_layout.html) -- computed once here rather
+            # than duplicated in every route.
+            "now_year": datetime.date.today().year,
         }
-
-    @app.route("/")
-    def index():
-        if auth.current_user() is None:
-            return redirect(url_for("auth.login"))
-        perms = getattr(g, "permissions", set())
-        if perms <= {"tracker.view_own"}:
-            # A customer-portal-only account has nothing to see under
-            # Product Master -- send them straight to their own portal.
-            return redirect(url_for("portal.list_view"))
-        return redirect(url_for("products.list_view"))
 
     @app.errorhandler(403)
     def forbidden(e):

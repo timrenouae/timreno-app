@@ -31,4 +31,60 @@
     <a href="{{ url_for('purchases.suppliers_view') }}" class="btn btn-ghost">Cancel</a>
   </form>
 </div>
+
+{% if supplier %}
+<div class="panel" style="max-width:480px;">
+  <h2>Vendor code</h2>
+  <p class="hint" style="margin-top:-4px;">Permanent, unique reference for this vendor — assigned once at creation and never editable.</p>
+  <div class="field">
+    <code style="font-size:0.95rem;">{{ supplier.vendor_code or '—' }}</code>
+  </div>
+</div>
+
+<div class="panel" style="max-width:480px;">
+  <h2>Vendor portal login</h2>
+  <p class="hint">Link a vendor login so they can price Material Requisitions sent to them — they'll only ever see their own requisitions, nothing else in the app.</p>
+
+  {% if supplier.portal_user_id %}
+    <p class="hint" style="margin-top:-4px;">
+      Currently linked to:
+      {% for u in vendor_users %}{% if u.id == supplier.portal_user_id %}<b>{{ u.display_name }}</b> ({{ u.username }}){% endif %}{% endfor %}
+    </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('purchases.set_vendor_user', supplier_id=supplier.id) }}" class="form-grid" style="align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="vendorUserSelect">Vendor login</label>
+      <select id="vendorUserSelect" name="vendor_user_id">
+        <option value="">— not linked —</option>
+        {% for u in vendor_users %}
+          <option value="{{ u.id }}" {{ 'selected' if supplier.portal_user_id == u.id else '' }}>{{ u.display_name }} ({{ u.username }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field"><button type="submit" class="btn btn-secondary">Save</button></div>
+  </form>
+
+  {% if not vendor_users %}
+    {% if not vendor_role_exists %}
+      <p class="hint" style="margin-top:8px;">No vendor accounts exist yet — under Admin, create a "Vendor" role with just the "Vendor portal" permission, add a user to it, then come back here to link them (a one-click way to generate a vendor login will also appear here automatically once that role exists).</p>
+    {% else %}
+      <p class="hint" style="margin-top:8px;">No vendor accounts exist yet — use "Quick-create vendor login" below, or add one under Admin → Users first.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if not supplier.portal_user_id %}
+    {% if vendor_role_exists %}
+      <form method="post" action="{{ url_for('purchases.quick_create_vendor_login', supplier_id=supplier.id) }}" style="margin-top:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">Quick-create vendor login</button>
+        <p class="hint" style="margin-top:6px; margin-bottom:0;">Generates a username/password from this vendor's code (e.g. <code>{{ (supplier.vendor_code or '')|lower|replace('-','') }}</code> / <code>{{ (supplier.vendor_code or '')|lower|replace('-','') }}12345</code>) and shows it once for you to copy.</p>
+      </form>
+    {% else %}
+      <p class="hint" style="margin-top:14px;">A one-click way to generate a vendor login will be available here once a "Vendor" role (holding just the "Vendor portal" permission) exists under Admin → Roles.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Website Leads — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Public Website</p>
+<h1>Website Leads</h1>
+<p class="sub">Messages submitted through the public site's contact form at <code>/contact</code>.</p>
+
+<div class="panel">
+  {% if inquiries %}
+  <table>
+    <thead>
+      <tr><th>Received</th><th>Name</th><th>Email</th><th>Phone</th><th>Message</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for i in inquiries %}
+      <tr>
+        <td style="white-space:nowrap; font-family:'IBM Plex Mono',monospace; font-size:0.8rem;">{{ i.created_at }}</td>
+        <td><b>{{ i.name }}</b></td>
+        <td>{% if i.email %}<a href="mailto:{{ i.email }}">{{ i.email }}</a>{% else %}<span style="color:var(--ink-soft);">—</span>{% endif %}</td>
+        <td>{{ i.phone or '—' }}</td>
+        <td style="max-width:360px; white-space:pre-wrap;">{{ i.message }}</td>
+        <td>
+          {% if i.status == 'new' %}<span class="badge badge-accent">New</span>
+          {% else %}<span class="badge badge-muted">Read</span>{% endif %}
+        </td>
+        <td>
+          {% if i.status == 'new' %}
+          <form method="post" action="{{ url_for('leads.mark_read', inquiry_id=i.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-secondary">Mark read</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No messages yet — submissions from the public site's Contact page will show up here.</div>
+  {% endif %}
+</div>
+{% endblock %}

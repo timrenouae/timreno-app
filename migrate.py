@@ -31,6 +31,14 @@ PERMISSIONS = {
                          "(no pricing, budget, or team info) -- give this to a Customer role, nothing else",
     "settings.manage": "Edit company details (name, address, TRN, bank details) and the Document Builder "
                         "(logo, colors, font, terms & conditions, disclaimers) used across the app's PDFs",
+    "tracker.complete_tasks": "Field/engineer access: open the Project Tracker's simplified task checklist for "
+                               "any project and mark tasks complete with a required photo of the finished work "
+                               "(no pricing, budget, team, or quote-editing access)",
+    "requisitions.manage": "Create material requisitions, review vendor-submitted pricing, and convert a priced "
+                            "requisition into a purchase order",
+    "requisitions.vendor_fill": "Vendor portal: view and price only the material requisitions sent to their own "
+                                 "linked vendor account -- nothing else in the app",
+    "leads.view": "See messages submitted through the public website's contact form",
 }
 
 

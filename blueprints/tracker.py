@@ -1,8 +1,9 @@
 import datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, send_from_directory
 
 import auth
+import config
 import db
 import repositories.quotes as quotes_repo
 import repositories.tracker as tracker_repo
@@ -13,7 +14,7 @@ bp = Blueprint("tracker", __name__, url_prefix="/tracker")
 
 
 @bp.route("/")
-@auth.require_internal_login
+@auth.require_internal_login_or_task_access
 def list_view():
     with db.connect() as conn:
         rows = tracker_repo.list_tracked_quotes_with_stats(conn)
@@ -27,7 +28,7 @@ def list_view():
 
 
 @bp.route("/<int:quote_id>")
-@auth.require_internal_login
+@auth.require_internal_login_or_task_access
 def detail_view(quote_id):
     with db.connect_immediate() as conn:
         full = quotes_repo.get_quote_full(conn, quote_id)
@@ -121,17 +122,69 @@ def add_task(quote_id):
 
 
 @bp.route("/<int:quote_id>/tasks/<int:task_id>/complete", methods=["POST"])
-@auth.require_permission("quotes.manage")
+@auth.require_any_permission("quotes.manage", "tracker.complete_tasks")
 def complete_task(quote_id, task_id):
     auth.csrf_protect()
+    photo = request.files.get("photo")
+    if not photo or not photo.filename:
+        flash("Attach a photo of the finished work before marking this item done.", "error")
+        return _back(quote_id)
+    try:
+        photo_filename = tracker_repo.save_task_photo(photo)
+    except ValueError as e:
+        flash(str(e), "error")
+        return _back(quote_id)
     try:
         with db.connect_immediate() as conn:
-            tracker_repo.complete_task(conn, task_id)
+            tracker_repo.complete_task(conn, task_id, photo_filename)
             audit_repo.log(conn, auth.current_user()["id"], "complete_task", "quote_task", task_id)
         flash("Task marked complete.", "success")
     except (tracker_repo.TaskNotFoundError, tracker_repo.TaskAlreadyCompletedError) as e:
         flash(str(e), "error")
     return _back(quote_id)
+
+
+@bp.route("/tasks/<int:task_id>/photo")
+@auth.login_required
+def task_photo(task_id):
+    """Serves a completed task's photo. Deliberately NOT public like the
+    company logo route -- these are photos of a client's home/site, so
+    access is checked explicitly rather than reusing
+    require_owner_or_permission (whose resource_fn shape doesn't fit a
+    task-id-keyed route cleanly): allowed if the requester is internal
+    (anything other than a portal-only account -- an Engineer completing
+    tasks needs to see photos too) OR is the customer this task's quote is
+    linked to. Uses the shared auth.is_portal_only_user() helper (not an
+    ad-hoc {'tracker.view_own'} subset check) so a Vendor-only account
+    (Item 5's requisitions.vendor_fill) is correctly excluded too, not
+    misclassified as "internal"."""
+    with db.connect() as conn:
+        row = conn.execute(
+            """SELECT t.photo_filename, q.client_user_id
+               FROM quote_tasks t JOIN quotes q ON q.id = t.quote_id
+               WHERE t.id = ?""",
+            (task_id,),
+        ).fetchone()
+    if row is None or not row["photo_filename"]:
+        abort(404)
+
+    user = auth.current_user()
+    perms = getattr(auth.g, "permissions", set())
+    # is_portal_only_user() now also flags an Engineer-only account
+    # (tracker.complete_tasks was added to _PORTAL_ONLY_CODES so Engineers
+    # are correctly blocked from every OTHER internal area) -- but for
+    # THIS route specifically, an Engineer completing tasks still needs to
+    # see the photos, so that one permission is allowed back in explicitly
+    # rather than treating "portal-only" as a blanket exclusion here.
+    is_internal = (not auth.is_portal_only_user(perms)) or ("tracker.complete_tasks" in perms)
+    is_linked_customer = row["client_user_id"] is not None and row["client_user_id"] == user["id"]
+    if not (is_internal or is_linked_customer):
+        abort(403)
+
+    path = tracker_repo.task_photo_path(row["photo_filename"])
+    if not path:
+        abort(404)
+    return send_from_directory(config.UPLOADS_DIR, row["photo_filename"])
 
 
 @bp.route("/<int:quote_id>/tasks/<int:task_id>/deadline", methods=["POST"])

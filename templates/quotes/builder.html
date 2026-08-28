@@ -105,6 +105,22 @@
 
   <div>
     <div class="panel">
+      <h2>Import from Drawing</h2>
+      <p class="hint" style="margin-top:0;">Upload a floor-plan PDF, a photo/scan of a printed plan, or a rough hand sketch — Claude will read it and suggest a room list you can review before adding.</p>
+      <div class="form-grid" style="align-items:end;">
+        <div class="field">
+          <label for="drawingFile">Drawing file</label>
+          <input type="file" id="drawingFile" accept="image/png,image/jpeg,image/webp,application/pdf">
+        </div>
+        <div class="field">
+          <button type="button" id="analyzeDrawingBtn" class="btn btn-secondary">Analyze Drawing</button>
+        </div>
+      </div>
+      <div id="drawingStatus" class="save-status"></div>
+      <div id="drawingReviewBox"></div>
+    </div>
+
+    <div class="panel">
       <h2>Rooms</h2>
       <div class="form-grid" style="align-items:end;">
         <div class="field">

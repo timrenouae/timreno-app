@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ requisition.requisition_no }} — Material Requisitions — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Material Requisitions</p>
+<h1>{{ requisition.requisition_no }}</h1>
+<p class="sub">
+  {% if requisition.status == 'awarded' %}<span class="badge badge-sage">Awarded</span>
+  {% elif requisition.status == 'cancelled' %}<span class="badge badge-muted">Cancelled</span>
+  {% else %}<span class="badge badge-structure">Open</span>{% endif %}
+  {% if requisition.notes %}&middot; {{ requisition.notes }}{% endif %}
+</p>
+
+{% if requisition.status == 'awarded' %}
+<div class="panel">
+  <h2>Awarded</h2>
+  <p class="hint" style="margin-top:-4px; margin-bottom:0;">This requisition was awarded on {{ requisition.awarded_at }}.
+    <a href="{{ url_for('purchases.detail_view', po_id=requisition.resulting_po_id) }}">View the resulting purchase order →</a>
+  </p>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Items</h2>
+  {% if items_locked %}
+    <p class="hint" style="margin-top:-4px;">
+      {% if requisition.status != 'open' %}This requisition is no longer open, so the item list can't be changed.
+      {% else %}A vendor has already submitted pricing, so the item list is locked to protect the integrity of what they quoted.{% endif %}
+    </p>
+    {% if items %}
+    <table>
+      <thead><tr><th>Description</th><th>Unit</th><th>Qty</th></tr></thead>
+      <tbody>
+      {% for i in items %}
+        <tr><td>{{ i.description }}</td><td>{{ i.unit }}</td><td>{{ i.quantity|round(2) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty-state">No items were added before this requisition locked.</div>
+    {% endif %}
+  {% else %}
+    <div class="field">
+      <label for="mrSearchQuery">Search Product Master (multiple keywords match in any order)</label>
+      <input type="text" id="mrSearchQuery" placeholder="e.g. socket schneider">
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="mrCategorySelect">Group</label>
+        <select id="mrCategorySelect">
+          <option value="">All groups</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="mrBrandSelect">Brand</label>
+        <select id="mrBrandSelect">
+          <option value="">All brands</option>
+          <option value="__NONE__">No brand listed</option>
+          {% for b in brands %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div id="mrSearchResults" class="search-results"></div>
+
+    <div class="form-grid" style="align-items:end; margin-top:12px;">
+      <div class="field" style="grid-column:1 / -1;">
+        <label for="mrCustomDesc">Or add a custom item (not in the Product Master)</label>
+        <input type="text" id="mrCustomDesc" placeholder="Description">
+      </div>
+      <div class="field">
+        <label for="mrCustomUnit">Unit</label>
+        <select id="mrCustomUnit">
+          {% for u in units %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="mrCustomQty">Qty</label>
+        <input type="number" step="0.01" min="0.01" id="mrCustomQty" value="1">
+      </div>
+      <div class="field">
+        <button type="button" id="mrCustomAddBtn" class="btn btn-secondary">+ Add custom item</button>
+      </div>
+    </div>
+
+    <h2 style="margin-top:18px;">Item list</h2>
+    <div id="mrItemsBox"></div>
+
+    <form method="post" action="{{ url_for('requisitions.save_items', requisition_id=requisition.id) }}" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="items_json" id="mrItemsJson">
+      <button type="submit" class="btn btn-primary">Save item list</button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Vendors</h2>
+  {% if vendors %}
+    <table>
+      <thead><tr><th>Vendor</th><th>Code</th><th>Status</th><th>Total</th></tr></thead>
+      <tbody>
+      {% for v in vendors %}
+        <tr>
+          <td>{{ v.supplier_name }}</td>
+          <td><code>{{ v.vendor_code or '—' }}</code></td>
+          <td>
+            {% if v.status == 'submitted' %}<span class="badge badge-sage">Submitted</span>
+            {% elif v.priced_count > 0 %}<span class="badge badge-accent">In progress</span>
+            {% else %}<span class="badge badge-muted">Pending</span>{% endif %}
+          </td>
+          <td style="font-family:'IBM Plex Mono',monospace;">
+            {% if v.priced_count > 0 %}{{ "%.2f"|format(v.total) }}{{ '' if v.is_complete else ' (incomplete)' }}{% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">No vendors invited yet.</div>
+  {% endif %}
+
+  {% if requisition.status == 'open' %}
+  <form method="post" action="{{ url_for('requisitions.invite_vendor', requisition_id=requisition.id) }}" class="form-grid" style="align-items:end; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="supplierSelect">Invite a vendor</label>
+      <select id="supplierSelect" name="supplier_id">
+        {% for s in available_suppliers %}
+          <option value="{{ s.id }}">{{ s.name }} ({{ s.vendor_code }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-secondary" {{ 'disabled' if not available_suppliers else '' }}>+ Invite vendor</button>
+    </div>
+  </form>
+  {% if not available_suppliers %}
+    <p class="hint" style="margin-top:8px;">{{ 'Every active supplier has already been invited.' if vendors else 'Add a supplier first under Purchases → Suppliers.' }}</p>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% if vendors and items %}
+<div class="panel">
+  <h2>Compare vendor pricing</h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th><th>Unit</th><th>Qty</th>
+        {% for v in vendors %}
+          <th>{{ v.supplier_name }}<br><small>{{ v.vendor_code }}</small></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for i in items %}
+      <tr>
+        <td>{{ i.description }}</td>
+        <td>{{ i.unit }}</td>
+        <td>{{ i.quantity|round(2) }}</td>
+        {% for v in vendors %}
+          {% set p = v.prices_by_item.get(i.id) %}
+          <td style="font-family:'IBM Plex Mono',monospace;">
+            {% if p and p.unit_price is not none %}{{ "%.2f"|format(p.unit_price) }}{% else %}—{% endif %}
+            {% if p and p.vendor_notes %}<br><small class="hint" style="margin:0;">{{ p.vendor_notes }}</small>{% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+      <tr>
+        <td colspan="3"><b>Total</b></td>
+        {% for v in vendors %}
+          <td style="font-family:'IBM Plex Mono',monospace;">
+            <b>{{ "%.2f"|format(v.total) }}</b>{{ '' if v.is_complete else ' (incomplete)' }}
+          </td>
+        {% endfor %}
+      </tr>
+      {% if requisition.status == 'open' %}
+      <tr>
+        <td colspan="3"><b>Award</b></td>
+        {% for v in vendors %}
+          <td>
+            <form method="post" action="{{ url_for('requisitions.award', requisition_id=requisition.id) }}" onsubmit="return confirm('Award this requisition to {{ v.supplier_name }} and create a purchase order?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="requisition_vendor_id" value="{{ v.id }}">
+              <button type="submit" class="btn btn-primary" {{ '' if v.status == 'submitted' else 'disabled' }}>Award to this vendor</button>
+            </form>
+          </td>
+        {% endfor %}
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel">
+  <a href="{{ url_for('requisitions.list_view') }}" class="btn btn-ghost">← Back to Material Requisitions</a>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not items_locked %}
+<script id="mrInitialData" type="application/json">{{ items | tojson }}</script>
+<script src="{{ url_for('static', filename='js/requisitions.js') }}"></script>
+{% endif %}
+{% endblock %}

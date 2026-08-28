@@ -61,3 +61,18 @@ def list_all_permissions(conn):
 def role_in_use(conn, role_id) -> bool:
     row = conn.execute("SELECT COUNT(*) c FROM users WHERE role_id = ?", (role_id,)).fetchone()
     return row["c"] > 0
+
+
+def find_role_with_exact_permissions(conn, permission_codes):
+    """Returns the first role row whose permission set is EXACTLY
+    `permission_codes` (a set), or None. Self-service precondition for a
+    "quick-create login" action: e.g. Item 5's vendor login button is only
+    enabled once the owner has created a role holding just
+    requisitions.vendor_fill and nothing else -- same idea as the Tracker's
+    'create a Customer role first' messaging, generalized to any exact
+    single-purpose permission set."""
+    target = set(permission_codes)
+    for role in conn.execute("SELECT * FROM roles").fetchall():
+        if role_permission_codes(conn, role["id"]) == target:
+            return role
+    return None

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ requisition.requisition_no }} — Vendor Portal — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Vendor Portal</p>
+<h1>{{ requisition.requisition_no }}</h1>
+<p class="sub">
+  {% if rv.status == 'submitted' %}<span class="badge badge-sage">Submitted {{ rv.submitted_at }}</span>
+  {% else %}<span class="badge badge-structure">Awaiting your pricing</span>{% endif %}
+  {% if requisition.notes %}&middot; {{ requisition.notes }}{% endif %}
+</p>
+
+<div class="panel">
+  {% if rv.status == 'submitted' %}
+    <h2>Submitted — you can no longer edit</h2>
+    <p class="hint" style="margin-top:-4px;">Your pricing was submitted on {{ rv.submitted_at }} and is now locked. Contact {{ company_settings.company_name if company_settings else 'us' }} if something needs to change.</p>
+    {% if items %}
+    <table>
+      <thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Your price</th><th>Note</th></tr></thead>
+      <tbody>
+      {% for i in items %}
+        {% set p = prices_by_item.get(i.id) %}
+        <tr>
+          <td>{{ i.description }}</td>
+          <td>{{ i.unit }}</td>
+          <td>{{ i.quantity|round(2) }}</td>
+          <td style="font-family:'IBM Plex Mono',monospace;">{{ "%.2f"|format(p.unit_price) if p and p.unit_price is not none else '—' }}</td>
+          <td>{{ p.vendor_notes if p and p.vendor_notes else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  {% else %}
+    <h2>Enter your pricing</h2>
+    <p class="hint" style="margin-top:-4px;">Save a draft as many times as you like — nothing is final until you submit.</p>
+    {% if items %}
+    <form method="post" action="{{ url_for('vendor_portal.save_draft', rv_id=rv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <table>
+        <thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Your price</th><th>Note (optional)</th></tr></thead>
+        <tbody>
+        {% for i in items %}
+          {% set p = prices_by_item.get(i.id) %}
+          <tr>
+            <td>{{ i.description }}</td>
+            <td>{{ i.unit }}</td>
+            <td>{{ i.quantity|round(2) }}</td>
+            <td class="price-cell">
+              <input type="number" step="0.01" min="0" name="price_{{ i.id }}"
+                     value="{{ p.unit_price if p and p.unit_price is not none else '' }}" style="width:100px;">
+            </td>
+            <td>
+              <input type="text" name="note_{{ i.id }}" value="{{ p.vendor_notes if p and p.vendor_notes else '' }}" style="width:100%;">
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% set company_display_name = company_settings.company_name if company_settings else 'TIM RENO' %}
+      <div style="margin-top:14px; display:flex; gap:8px;">
+        <button type="submit" class="btn btn-secondary">Save draft</button>
+        <button type="submit" formaction="{{ url_for('vendor_portal.submit', rv_id=rv.id) }}" class="btn btn-primary"
+                data-confirm-name="{{ company_display_name }}" onclick="return confirm('Submit final pricing to ' + this.dataset.confirmName + '? You will not be able to edit it after this.');">
+          Submit to {{ company_display_name }}
+        </button>
+      </div>
+    </form>
+    {% else %}
+      <div class="empty-state">No items have been added to this requisition yet.</div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="panel">
+  <a href="{{ url_for('vendor_portal.list_view') }}" class="btn btn-ghost">← Back to Material Requests</a>
+</div>
+{% endblock %}

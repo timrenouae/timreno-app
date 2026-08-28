@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}New requisition — Material Requisitions — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Material Requisitions</p>
+<h1>New requisition</h1>
+<p class="sub">Add items and invite vendors on the next page — start with an optional note for whoever's pricing this.</p>
+
+<div class="panel" style="max-width:480px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="notes">Notes (optional, shown to invited vendors)</label>
+      <textarea id="notes" name="notes" rows="4" placeholder="e.g. Delivery needed within 2 weeks."></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Create requisition</button>
+    <a href="{{ url_for('requisitions.list_view') }}" class="btn btn-ghost">Cancel</a>
+  </form>
+</div>
+{% endblock %}

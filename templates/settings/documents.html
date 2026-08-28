@@ -93,7 +93,135 @@
       <p class="hint">Pre-fills every brand-new quote's Terms &amp; Conditions editor, in this order. Staff can still edit or remove them on any individual quote before saving.</p>
     </div>
 
+    <h2>Quote table columns</h2>
+    <p class="hint" style="margin-top:-4px;">Choose which columns appear on every quote's room-items table, their header text, and their order. Description can't be hidden.</p>
+    <div class="col-editor" id="quote-col-editor"></div>
+    <input type="hidden" name="quote_table_columns" id="quote_table_columns_input">
+
+    <h2>Purchase Order</h2>
+    <div class="checkbox-grid">
+      <label>
+        <input type="checkbox" name="show_bank_details_on_po" {{ 'checked' if settings.show_bank_details_on_po else '' }}>
+        Show Payment details block on Purchase Order PDFs
+      </label>
+    </div>
+    <div class="field">
+      <label for="po_terms">Purchase Order Terms &amp; Conditions -- one term per line</label>
+      <textarea id="po_terms" name="po_terms" rows="6">{{ po_terms | join('\n') }}</textarea>
+      <p class="hint">Printed as a numbered "TERMS &amp; CONDITIONS" block on every Purchase Order PDF. Leave blank to omit it entirely.</p>
+    </div>
+
+    <h2 style="margin-top:0;">Purchase Order table columns</h2>
+    <p class="hint" style="margin-top:-4px;">Choose which columns appear on every PO's items table, their header text, and their order. Description can't be hidden.</p>
+    <div class="col-editor" id="po-col-editor"></div>
+    <input type="hidden" name="po_table_columns" id="po_table_columns_input">
+
     <button type="submit" class="btn btn-primary">Save document settings</button>
   </form>
 </div>
+
+<style>
+  .col-editor{ border:1px solid var(--line); border-radius:6px; overflow:hidden; margin-bottom:16px; background:#fff; }
+  .col-editor-row{ display:flex; align-items:center; gap:10px; padding:7px 10px; border-bottom:1px solid var(--line); }
+  .col-editor-row:last-child{ border-bottom:none; }
+  .col-editor-row .col-key{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:10px; letter-spacing:0.03em;
+    color:var(--ink-soft); width:82px; flex:none; text-transform:uppercase;
+  }
+  .col-editor-row input[type=text]{ flex:1; min-width:0; padding:5px 8px; }
+  .col-editor-row .col-show{ display:flex; align-items:center; gap:5px; font-size:0.8rem; flex:none; white-space:nowrap; }
+  .col-editor-row .col-move{ display:flex; gap:2px; flex:none; }
+  .col-editor-row .col-move button{ width:26px; height:26px; padding:0; line-height:1; font-size:0.75rem; }
+</style>
+
+<script>
+(function () {
+  function initColumnEditor(containerId, hiddenId, columns) {
+    var container = document.getElementById(containerId);
+    var hidden = document.getElementById(hiddenId);
+    var state = columns.map(function (c) {
+      return { key: c.key, label: c.label, enabled: !!c.enabled };
+    });
+
+    function sync() {
+      hidden.value = JSON.stringify(state);
+    }
+
+    function render() {
+      container.innerHTML = "";
+      state.forEach(function (col, idx) {
+        var row = document.createElement("div");
+        row.className = "col-editor-row";
+
+        var keyTag = document.createElement("span");
+        keyTag.className = "col-key";
+        keyTag.textContent = col.key;
+        row.appendChild(keyTag);
+
+        var labelInput = document.createElement("input");
+        labelInput.type = "text";
+        labelInput.value = col.label;
+        labelInput.addEventListener("input", function () {
+          col.label = labelInput.value;
+          sync();
+        });
+        row.appendChild(labelInput);
+
+        var locked = col.key === "description";
+        var showLabel = document.createElement("label");
+        showLabel.className = "col-show";
+        var enabledCheckbox = document.createElement("input");
+        enabledCheckbox.type = "checkbox";
+        enabledCheckbox.checked = locked ? true : col.enabled;
+        enabledCheckbox.disabled = locked;
+        enabledCheckbox.addEventListener("change", function () {
+          col.enabled = enabledCheckbox.checked;
+          sync();
+        });
+        showLabel.appendChild(enabledCheckbox);
+        showLabel.appendChild(document.createTextNode(" Show"));
+        row.appendChild(showLabel);
+
+        var moveWrap = document.createElement("span");
+        moveWrap.className = "col-move";
+        var upBtn = document.createElement("button");
+        upBtn.type = "button";
+        upBtn.className = "btn btn-ghost";
+        upBtn.textContent = "▲";
+        upBtn.title = "Move up";
+        upBtn.disabled = idx === 0;
+        upBtn.addEventListener("click", function () {
+          var tmp = state[idx - 1];
+          state[idx - 1] = state[idx];
+          state[idx] = tmp;
+          render();
+        });
+        var downBtn = document.createElement("button");
+        downBtn.type = "button";
+        downBtn.className = "btn btn-ghost";
+        downBtn.textContent = "▼";
+        downBtn.title = "Move down";
+        downBtn.disabled = idx === state.length - 1;
+        downBtn.addEventListener("click", function () {
+          var tmp = state[idx + 1];
+          state[idx + 1] = state[idx];
+          state[idx] = tmp;
+          render();
+        });
+        moveWrap.appendChild(upBtn);
+        moveWrap.appendChild(downBtn);
+        row.appendChild(moveWrap);
+
+        container.appendChild(row);
+      });
+      sync();
+    }
+
+    render();
+  }
+
+  initColumnEditor("quote-col-editor", "quote_table_columns_input", {{ quote_columns | tojson }});
+  initColumnEditor("po-col-editor", "po_table_columns_input", {{ po_columns | tojson }});
+})();
+</script>
 {% endblock %}

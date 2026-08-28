@@ -178,6 +178,7 @@ table.items td.amt{ text-align:right; font-family:"IBM Plex Mono", ui-monospace,
 .task-group-heading{ font-family:"Big Shoulders Display", sans-serif; font-weight:700; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.02em; color:var(--structure); margin:16px 0 6px; }
 .task-row.is-completed{ opacity:0.72; }
 .task-row .task-desc.is-completed{ text-decoration:line-through; }
+.task-photo-thumb{ height:64px; width:64px; object-fit:cover; border-radius:6px; border:1px solid var(--line); cursor:pointer; vertical-align:middle; }
 .budget-box{ display:flex; gap:24px; flex-wrap:wrap; }
 .budget-box .fig .lbl{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-soft); }
 .budget-box .fig .val{ font-family:"Big Shoulders Display", sans-serif; font-weight:800; font-size:1.2rem; }

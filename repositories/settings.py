@@ -28,6 +28,12 @@ _EDITABLE_FIELDS = {
     "show_bank_details_on_quote", "show_bank_details_on_estimate",
     "estimate_disclaimer_text", "quote_trailing_block_order",
     "logo_filename",
+    # Item 3 -- PO content parity + configurable PDF table columns (see
+    # migrations/0006_po_content_and_columns.sql). The blueprint is
+    # responsible for json.dumps()-ing quote_table_columns/po_table_columns
+    # before calling update_settings() -- this repository never encodes/
+    # decodes JSON itself.
+    "show_bank_details_on_po", "quote_table_columns", "po_table_columns",
 }
 
 ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg"}
@@ -75,6 +81,27 @@ def save_default_terms(conn, terms: list):
             continue
         conn.execute(
             "INSERT INTO settings_default_terms (position, text) VALUES (?, ?)",
+            (pos, text),
+        )
+
+
+# ------------------------------------------------------------------- po terms
+
+def get_po_terms(conn):
+    rows = conn.execute(
+        "SELECT text FROM settings_po_terms ORDER BY position"
+    ).fetchall()
+    return [r["text"] for r in rows]
+
+
+def save_po_terms(conn, terms: list):
+    conn.execute("DELETE FROM settings_po_terms")
+    for pos, text in enumerate(terms or []):
+        text = (text or "").strip()
+        if not text:
+            continue
+        conn.execute(
+            "INSERT INTO settings_po_terms (position, text) VALUES (?, ?)",
             (pos, text),
         )
 

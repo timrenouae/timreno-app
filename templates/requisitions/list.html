@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Material Requisitions — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Material Requisitions</p>
+<h1>Material Requisitions</h1>
+<p class="sub">Send an item list out for pricing to several vendors at once, compare their submitted prices side by side, then award the winner straight into a Purchase Order.</p>
+
+<div class="panel">
+  <a href="{{ url_for('requisitions.new_view') }}" class="btn btn-primary">+ New requisition</a>
+</div>
+
+<div class="panel">
+  {% if rows %}
+  <table>
+    <thead><tr><th>Requisition #</th><th>Status</th><th>Vendors</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.requisition_no }}</td>
+        <td>
+          {% if r.status == 'awarded' %}<span class="badge badge-sage">Awarded</span>
+          {% elif r.status == 'cancelled' %}<span class="badge badge-muted">Cancelled</span>
+          {% else %}<span class="badge badge-structure">Open</span>{% endif %}
+        </td>
+        <td>{{ r.submitted_count }} / {{ r.vendor_count }} submitted</td>
+        <td>{{ r.created_at }}</td>
+        <td><a href="{{ url_for('requisitions.detail_view', requisition_id=r.id) }}" class="btn btn-ghost">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-state">No requisitions yet — create one above.</div>
+  {% endif %}
+</div>
+{% endblock %}

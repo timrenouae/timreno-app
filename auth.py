@@ -141,13 +141,38 @@ def get_role_permissions(conn, role_id) -> set:
     return {r["code"] for r in rows}
 
 
+# Permission codes that identify a "portal-only" account -- one that should
+# never reach any internal view, only its own dedicated portal. A set (not a
+# single code) because more than one portal type shares this shape: the
+# Customer portal (tracker.view_own), the Engineer portal
+# (tracker.complete_tasks), and -- Item 5 -- the Vendor portal
+# (requisitions.vendor_fill), added here rather than re-deriving the concept.
+_PORTAL_ONLY_CODES = {"tracker.view_own", "tracker.complete_tasks", "requisitions.vendor_fill"}
+
+
+def is_portal_only_user(permissions) -> bool:
+    """True if `permissions` is a subset of _PORTAL_ONLY_CODES, i.e. this
+    account holds nothing but portal-only permission(s) -- so it must never
+    be treated as internal staff, regardless of which portal code(s) it
+    holds or in what combination."""
+    return set(permissions) <= _PORTAL_ONLY_CODES
+
+
 def default_landing_endpoint(permissions) -> str:
     """Where a user should land after login (and at '/', see app.py's index
     route): the customer portal for a customer-portal-only account
-    (permission set empty or exactly {'tracker.view_own'}), Product Master
-    otherwise."""
-    if set(permissions) <= {"tracker.view_own"}:
+    (permission set empty or exactly {'tracker.view_own'}), the (now
+    Engineer-simplified) Tracker list for a tasks-only account (permission
+    set exactly {'tracker.complete_tasks'}), the Vendor portal for a
+    vendor-only account (permission set exactly
+    {'requisitions.vendor_fill'} -- Item 5), Product Master otherwise."""
+    perms = set(permissions)
+    if perms <= {"tracker.view_own"}:
         return "portal.list_view"
+    if perms <= {"tracker.complete_tasks"}:
+        return "tracker.list_view"
+    if perms <= {"requisitions.vendor_fill"}:
+        return "vendor_portal.list_view"
     return "products.list_view"
 
 
@@ -163,20 +188,44 @@ def login_required(view):
 
 
 def require_internal_login(view):
-    """Like login_required, but additionally blocks a customer-portal-only
-    account (one whose permission set is empty or is exactly
-    {'tracker.view_own'}) from internal read views -- product/quote/tracker
+    """Like login_required, but additionally blocks a portal-only account
+    (one whose permission set is a subset of _PORTAL_ONLY_CODES -- e.g.
+    empty, exactly {'tracker.view_own'}, or exactly
+    {'tracker.complete_tasks'}) from internal read views -- product/quote
     lists and the quote PDF route -- that were historically just
     login_required so any internal staff member could browse them
     regardless of role. Any other permission at all (e.g. purchases.manage
     on the Buyer role) still passes through unchanged, matching existing
-    behavior exactly."""
+    behavior exactly. NOTE: the Tracker's own list/detail routes do NOT use
+    this decorator -- see require_internal_login_or_task_access below,
+    since an Engineer-only account's one dashboard IS the (simplified)
+    Tracker."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         if current_user() is None:
             return redirect(url_for("auth.login", next=request.path))
         perms = getattr(g, "permissions", set())
-        if perms <= {"tracker.view_own"}:
+        if is_portal_only_user(perms):
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def require_internal_login_or_task_access(view):
+    """Like require_internal_login, but additionally admits an
+    Engineer-only account (permission set exactly {'tracker.complete_tasks'}
+    with nothing else) -- used only by the Tracker's own list/detail routes,
+    which double as that account's one dashboard (simplified by the
+    templates based on current_permissions). Still blocks a
+    customer-portal-only account, and (once Item 5 adds its vendor code to
+    _PORTAL_ONLY_CODES) would still block a vendor-only account too, since
+    neither holds tracker.complete_tasks."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if current_user() is None:
+            return redirect(url_for("auth.login", next=request.path))
+        perms = getattr(g, "permissions", set())
+        if is_portal_only_user(perms) and "tracker.complete_tasks" not in perms:
             abort(403)
         return view(*args, **kwargs)
     return wrapped
@@ -191,6 +240,23 @@ def require_permission(code: str):
             if current_user() is None:
                 return redirect(url_for("auth.login", next=request.path))
             if not has_permission(code):
+                abort(403)
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def require_any_permission(*codes):
+    """Like require_permission, but grants access if the current user's role
+    carries ANY of the given codes -- e.g. completing a Tracker task should
+    work for either quotes.manage (office staff, unchanged) or the new
+    tracker.complete_tasks (Engineer)."""
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if current_user() is None:
+                return redirect(url_for("auth.login", next=request.path))
+            if not any(has_permission(c) for c in codes):
                 abort(403)
             return view(*args, **kwargs)
         return wrapped

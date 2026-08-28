@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ po.po_number }} — Purchases — TIM RENO{% endblock %}
 {% block content %}
+{% set default_ship_to = (company_settings.address_line1 or '') ~ (('\n' ~ company_settings.address_line2) if company_settings.address_line2 else '') %}
 <p class="eyebrow">Purchases</p>
 <h1>{{ po.po_number }}</h1>
 <p class="sub">{{ po.supplier_name }} &middot;
@@ -21,6 +22,10 @@
         <button type="submit" class="btn btn-ghost">Mark as sent</button>
       </form>
       {% endif %}
+      <form method="post" action="{{ url_for('purchases.duplicate', po_id=po.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-ghost">Duplicate this PO</button>
+      </form>
     </div>
   </div>
 
@@ -63,17 +68,60 @@
 
 {% if po.status in ['draft', 'sent'] %}
 <div class="panel">
-  <h2>Add item</h2>
-  <form method="post" action="{{ url_for('purchases.add_item', po_id=po.id) }}" class="form-grid" style="align-items:end;">
+  <h2>Order details</h2>
+  <p class="hint">Payment terms and delivery info for this order — editable until the PO starts receiving stock.</p>
+  <form method="post" action="{{ url_for('purchases.update_details', po_id=po.id) }}" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="payment_terms">Payment terms</label>
+      <input type="text" id="payment_terms" name="payment_terms" value="{{ po.payment_terms or '' }}"
+             placeholder="e.g. 50% advance, balance on delivery">
+    </div>
+    <div class="field">
+      <label for="expected_delivery_date">Expected delivery date</label>
+      <input type="date" id="expected_delivery_date" name="expected_delivery_date" value="{{ po.expected_delivery_date or '' }}">
+    </div>
     <div class="field" style="grid-column:1 / -1;">
-      <label for="product_id">Product</label>
-      <select id="product_id" name="product_id" required>
-        <option value="">Select a product…</option>
-        {% for p in products %}
-          <option value="{{ p.id }}">{{ p.category }} — {{ p.description }} ({{ p.brand or 'no brand' }})</option>
-        {% endfor %}
+      <label for="ship_to_address">Ship-to address</label>
+      <textarea id="ship_to_address" name="ship_to_address" rows="3">{{ po.ship_to_address if po.ship_to_address else default_ship_to }}</textarea>
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-primary">Save order details</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Add item</h2>
+  <div class="field">
+    <label for="poSearchQuery">Search Product Master (multiple keywords match in any order)</label>
+    <input type="text" id="poSearchQuery" placeholder="e.g. socket schneider">
+  </div>
+  <div class="form-grid">
+    <div class="field">
+      <label for="poCategorySelect">Group</label>
+      <select id="poCategorySelect">
+        <option value="">All groups</option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
       </select>
+    </div>
+    <div class="field">
+      <label for="poBrandSelect">Brand</label>
+      <select id="poBrandSelect">
+        <option value="">All brands</option>
+        <option value="__NONE__">No brand listed</option>
+        {% for b in brands %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div id="poSearchResults" class="search-results"></div>
+
+  <form method="post" action="{{ url_for('purchases.add_item', po_id=po.id) }}" class="form-grid" style="align-items:end; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" id="product_id" name="product_id">
+    <div class="field" style="grid-column:1 / -1;">
+      <label>Selected product</label>
+      <div id="poSelectedProduct" class="hint">No product selected yet — click a search result above.</div>
     </div>
     <div class="field">
       <label for="quantity">Quantity</label>
@@ -93,4 +141,8 @@
 <div class="panel">
   <a href="{{ url_for('purchases.list_view') }}" class="btn btn-ghost">← Back to purchase orders</a>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/purchases.js') }}"></script>
 {% endblock %}

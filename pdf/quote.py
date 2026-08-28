@@ -17,7 +17,6 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether,
-    ListFlowable, ListItem,
 )
 from reportlab.lib import colors
 
@@ -71,23 +70,37 @@ def _room_block(room, ctx, styles):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
 
-    rows = [[
-        Paragraph("DESCRIPTION", styles["header_cell"]), Paragraph("QTY", styles["header_cell"]),
-        Paragraph("UNIT", styles["header_cell"]), Paragraph("UNIT PRICE", styles["header_cell"]),
-        Paragraph("AMOUNT", styles["header_cell"]),
-    ]]
+    # Column set/order/labels/widths are owner-configurable (Settings ->
+    # Document builder) -- ctx.quote_columns is already the resolved
+    # [(key, label, width_mm), ...] list built by
+    # pdf.theme.get_pdf_context() -> resolve_columns(). "description" is
+    # always present (enforced there), so this table can never end up with
+    # zero columns.
+    numeric_keys = {"qty", "unit_price", "amount"}
+    columns = ctx.quote_columns
+
+    header_row = [Paragraph(label, styles["header_cell"]) for _, label, _ in columns]
+    rows = [header_row]
     for item in room["items"]:
         qty = item["qty"] or 0
         price = item["unit_price"] or 0
         amount = qty * price
-        rows.append([
-            Paragraph(item["description"], styles["cell"]),
-            Paragraph(f"{qty:g}", styles["num_cell"]),
-            Paragraph(item["unit"], styles["cell"]),
-            Paragraph(f"{price:,.2f}", styles["num_cell"]),
-            Paragraph(f"{amount:,.2f}", styles["num_cell"]),
-        ])
-    items_table = Table(rows, colWidths=[75 * mm, 14 * mm, 21 * mm, 30 * mm, 30 * mm], repeatRows=1)
+        values = {
+            "description": item["description"],
+            "qty": f"{qty:g}",
+            "unit": item["unit"],
+            "unit_price": f"{price:,.2f}",
+            "amount": f"{amount:,.2f}",
+            "brand": item.get("brand") or "—",
+        }
+        row = []
+        for key, _, _ in columns:
+            style = styles["num_cell"] if key in numeric_keys else styles["cell"]
+            row.append(Paragraph(str(values.get(key, "")), style))
+        rows.append(row)
+
+    col_widths = [w * mm for _, _, w in columns]
+    items_table = Table(rows, colWidths=col_widths, repeatRows=1)
     items_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.5, ctx.line),
@@ -102,18 +115,6 @@ def _room_block(room, ctx, styles):
         block.append(Paragraph(f"Note: {room['notes']}", styles["note"]))
     block.append(Spacer(1, 6))
     return KeepTogether(block)
-
-
-def _terms_flowables(terms, styles):
-    if not terms:
-        return []
-    items = [ListItem(Paragraph(t, styles["term"]), leftIndent=10) for t in terms]
-    return [
-        Spacer(1, 14),
-        Paragraph("TERMS &amp; CONDITIONS", styles["label"]),
-        Spacer(1, 4),
-        ListFlowable(items, bulletType="1", leftIndent=14, bulletFontSize=9),
-    ]
 
 
 def build_quote_pdf(ctx, meta: dict, rooms: list, terms: list) -> bytes:
@@ -182,7 +183,7 @@ def build_quote_pdf(ctx, meta: dict, rooms: list, terms: list) -> bytes:
     ]))
     story.append(totals_table)
 
-    terms_block = _terms_flowables(terms, styles)
+    terms_block = theme.terms_flowables(terms, styles)
     bank_block = theme.bank_details_block(ctx, styles) if ctx.show_bank_on_quote else []
     if ctx.trailing_order == "bank_then_terms":
         story += bank_block + terms_block

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Material Requests — TIM RENO{% endblock %}
+{% block content %}
+<p class="eyebrow">Vendor Portal</p>
+<h1>Material Requests</h1>
+<p class="sub">{{ supplier.name }} &middot; <code>{{ supplier.vendor_code }}</code></p>
+
+{% if rows %}
+  {% for r in rows %}
+  <a class="panel" style="display:block; text-decoration:none; color:inherit;" href="{{ url_for('vendor_portal.detail_view', rv_id=r.id) }}">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div>
+        <b>{{ r.requisition_no }}</b>
+        {% if r.notes %}<div class="hint" style="margin:2px 0 0;">{{ r.notes }}</div>{% endif %}
+      </div>
+      {% if r.status == 'submitted' %}<span class="badge badge-sage">Submitted</span>
+      {% else %}<span class="badge badge-structure">Awaiting your pricing</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+{% else %}
+  <div class="empty-state">No material requests sent to you yet.</div>
+{% endif %}
+{% endblock %}

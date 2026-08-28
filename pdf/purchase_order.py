@@ -5,11 +5,13 @@ coordinates -- Platypus handles text wrapping and row height itself, which
 is what avoids the overlap/alignment bugs the manual-coordinate approach
 produced elsewhere in this project earlier.
 
-Company identity, brand colors/font, and logo come from a
-pdf.theme.PdfContext (see pdf/theme.py) built from the live
-company_settings row, via the same shared header used by the quote and
-estimate PDFs -- previously this file hardcoded a different, inconsistent
-company name ("TIM RENOVATIONS") than the other two documents.
+Company identity, brand colors/font, logo, the owner-configurable items
+table columns, the optional Terms & Conditions/Payment Details blocks, all
+come from a pdf.theme.PdfContext (see pdf/theme.py) built from the live
+company_settings row, via the same shared header/terms/bank-details helpers
+the quote and estimate PDFs use -- previously this file hardcoded a
+different, inconsistent company name ("TIM RENOVATIONS") than the other two
+documents, and had no settings-driven content of its own at all (Item 3).
 """
 import io
 
@@ -20,6 +22,27 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 import pdf.theme as theme
+
+# Item 4: faint diagonal "DRAFT" overlay, active only while the PO's status
+# is 'draft'. A light neutral gray (not ctx.structure/ctx.accent, which
+# would clash with the owner's brand colors) drawn on the canvas layer
+# underneath the normal flowable content -- pure decoration, so it carries
+# none of the layout/wrapping risk a Platypus flowable would.
+_WATERMARK_COLOR = colors.Color(0.6, 0.6, 0.6, alpha=0.30)
+
+
+def _draft_watermark(canvas_obj, doc):
+    canvas_obj.saveState()
+    canvas_obj.setFont("Helvetica-Bold", 72)
+    canvas_obj.setFillColor(_WATERMARK_COLOR)
+    canvas_obj.translate(A4[0] / 2, A4[1] / 2)
+    canvas_obj.rotate(45)
+    canvas_obj.drawCentredString(0, 0, "DRAFT")
+    canvas_obj.restoreState()
+
+
+def _no_watermark(canvas_obj, doc):
+    pass
 
 
 def _styles(ctx):
@@ -41,6 +64,8 @@ def _styles(ctx):
                                 fontName=ctx.font, leading=12),
         "header_cell": ParagraphStyle("HeaderCell", parent=base["Normal"], fontSize=8.5, textColor=colors.white,
                                        fontName=ctx.font, leading=11),
+        "term": ParagraphStyle("Term", parent=base["Normal"], fontSize=9, textColor=ctx.ink_soft,
+                                fontName=ctx.font, leading=14),
     }
 
 
@@ -82,40 +107,74 @@ def build_purchase_order_pdf(ctx, po: dict, items: list) -> bytes:
     story.append(meta_table)
     story.append(Spacer(1, 4))
 
-    header_row = [
-        Paragraph("DESCRIPTION", styles["header_cell"]),
-        Paragraph("BRAND", styles["header_cell"]),
-        Paragraph("UNIT", styles["header_cell"]),
-        Paragraph("QTY", styles["header_cell"]),
-        Paragraph("UNIT PRICE", styles["header_cell"]),
-        Paragraph("LINE TOTAL", styles["header_cell"]),
-    ]
+    # Item 4: per-PO payment terms (negotiated with this supplier for this
+    # order -- separate from Item 3's settings_po_terms boilerplate legal
+    # text), expected delivery date, and ship-to address. Each line/block is
+    # omitted entirely when not set on this PO, with no fallback text.
+    extra_meta_rows = []
+    if po.get("payment_terms"):
+        extra_meta_rows.append(
+            [Paragraph("PAYMENT TERMS", styles["label"]), Paragraph(po["payment_terms"], styles["value"])]
+        )
+    if po.get("expected_delivery_date"):
+        extra_meta_rows.append(
+            [Paragraph("EXPECTED DELIVERY", styles["label"]),
+             Paragraph(str(po["expected_delivery_date"])[:10], styles["value"])]
+        )
+    if po.get("ship_to_address"):
+        ship_to_html = po["ship_to_address"].replace("\r\n", "\n").replace("\n", "<br/>")
+        extra_meta_rows.append(
+            [Paragraph("SHIP TO", styles["label"]), Paragraph(ship_to_html, styles["value"])]
+        )
+    if extra_meta_rows:
+        extra_meta_table = Table(extra_meta_rows, colWidths=[30 * mm, 140 * mm])
+        extra_meta_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(extra_meta_table)
+        story.append(Spacer(1, 4))
+
+    # Column set/order/labels/widths are owner-configurable (Settings ->
+    # Document builder) -- ctx.po_columns is already the resolved
+    # [(key, label, width_mm), ...] list built by pdf.theme.get_pdf_context()
+    # -> resolve_columns(). "description" is always present (enforced
+    # there), so this table can never end up with zero columns.
+    numeric_keys = {"qty", "unit_price", "line_total"}
+    columns = ctx.po_columns
+
+    header_row = [Paragraph(label, styles["header_cell"]) for _, label, _ in columns]
     rows = [header_row]
     grand_total = 0.0
     for item in items:
         line_total = float(item["quantity"]) * float(item["unit_price"])
         grand_total += line_total
-        rows.append([
-            Paragraph(item["description"], styles["cell"]),
-            Paragraph(item.get("brand") or "—", styles["cell"]),
-            Paragraph(item["unit"], styles["cell"]),
-            Paragraph(f"{item['quantity']:g}", styles["cell"]),
-            Paragraph(f"{item['unit_price']:.2f}", styles["cell"]),
-            Paragraph(f"{line_total:.2f}", styles["cell"]),
-        ])
+        values = {
+            "description": item["description"],
+            "brand": item.get("brand") or "—",
+            "unit": item["unit"],
+            "qty": f"{item['quantity']:g}",
+            "unit_price": f"{item['unit_price']:.2f}",
+            "line_total": f"{line_total:.2f}",
+        }
+        rows.append([Paragraph(str(values.get(key, "")), styles["cell"]) for key, _, _ in columns])
 
-    items_table = Table(rows, colWidths=[62 * mm, 26 * mm, 18 * mm, 16 * mm, 26 * mm, 26 * mm], repeatRows=1)
-    items_table.setStyle(TableStyle([
+    col_widths = [w * mm for _, _, w in columns]
+    items_table = Table(rows, colWidths=col_widths, repeatRows=1)
+    style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), ctx.structure),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.5, ctx.line),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ctx.paper_raised]),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
-    ]))
+    ]
+    for idx, (key, _, _) in enumerate(columns):
+        if key in numeric_keys:
+            style_cmds.append(("ALIGN", (idx, 0), (idx, -1), "RIGHT"))
+    items_table.setStyle(TableStyle(style_cmds))
     story.append(items_table)
     story.append(Spacer(1, 10))
 
@@ -135,5 +194,27 @@ def build_purchase_order_pdf(ctx, po: dict, items: list) -> bytes:
         story.append(Paragraph("NOTES", styles["label"]))
         story.append(Paragraph(po["notes"], styles["value"]))
 
-    doc.build(story)
+    # Item 3: PO content parity with Quote/Estimate -- boilerplate Terms &
+    # Conditions (settings_po_terms) and, if enabled, the same Payment
+    # Details block Quote/Estimate already use. Both no-op (return []) when
+    # there's nothing to show, so they're safe to unconditionally append.
+    story += theme.terms_flowables(ctx.po_terms, styles)
+    if ctx.show_bank_on_po:
+        story += theme.bank_details_block(ctx, styles)
+
+    # Item 4: authorized-by/signature line, always appended near the end of
+    # the story (after terms/bank/ship-to blocks) -- blank lines for a
+    # physical signature, no new data stored (print-and-sign, not a digital
+    # signature capture).
+    story.append(Spacer(1, 28))
+    story.append(Paragraph(
+        "Authorized by: ________________________________ &nbsp;&nbsp;&nbsp;&nbsp; "
+        "Date: ________________________________",
+        styles["value"],
+    ))
+
+    # Item 4: faint diagonal "DRAFT" watermark, active only while this PO is
+    # still a draft -- gone the moment it's marked sent (or beyond).
+    watermark_fn = _draft_watermark if po.get("status") == "draft" else _no_watermark
+    doc.build(story, onFirstPage=watermark_fn, onLaterPages=watermark_fn)
     return buf.getvalue()

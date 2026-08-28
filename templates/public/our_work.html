@@ -1,0 +1,107 @@
+{% extends "public/_layout.html" %}
+{% block title %}Our Work — {{ company_settings.company_name if company_settings else 'TIM RENO' }}{% endblock %}
+{% block content %}
+
+<section class="pub-subhero">
+  <div class="container">
+    <p class="eyebrow">Our Work</p>
+    <h1>The quality bar we build to</h1>
+    <p>We're a new company, so this gallery is curated design inspiration rather than our own completed projects — real before/after photography from our own jobs is coming soon and will replace it here.</p>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container">
+    <div class="pub-note" style="margin-bottom:34px;">
+      Honest note: the images below are free-license stock photography used to show the style and finish we aim for. They are not photos of work {{ company_settings.company_name if company_settings else 'TIM RENO' }} has completed. As projects finish, we'll swap these for our own site photography.
+    </div>
+    <div class="pub-gallery">
+      <figure>
+        <img src="https://images.unsplash.com/photo-1613977257363-707ba9348227?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Villa exterior — design inspiration">
+        <figcaption>Villa exterior — design inspiration</figcaption>
+      </figure>
+      <figure>
+        <img src="https://images.unsplash.com/photo-1682888813913-e13f18692019?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Kitchen with marble island — design inspiration">
+        <figcaption>Kitchen renovation — design inspiration</figcaption>
+      </figure>
+      <figure>
+        <img src="https://images.unsplash.com/photo-1770063817031-f3b98dff347f?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Modern kitchen finish — design inspiration">
+        <figcaption>Kitchen finish — design inspiration</figcaption>
+      </figure>
+      <figure>
+        <img src="https://images.unsplash.com/photo-1754522711595-84428937b07a?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Bathroom with marble walls — design inspiration">
+        <figcaption>Bathroom renovation — design inspiration</figcaption>
+      </figure>
+      <figure>
+        <img src="https://images.unsplash.com/photo-1746021535489-00edc5efb203?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Office fit-out — design inspiration">
+        <figcaption>Office fit-out — design inspiration</figcaption>
+      </figure>
+      <figure>
+        <img src="https://images.unsplash.com/photo-1754788358645-d6e6cca12e25?fm=jpg&q=75&w=900&auto=format&fit=crop" alt="Bathroom vanity — design inspiration">
+        <figcaption>Bathroom vanity — design inspiration</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section alt pub-reveal">
+  <div class="container">
+    <p class="eyebrow">Interactive</p>
+    <h2 style="text-align:center;">Before &amp; after</h2>
+    <p class="sub" style="text-align:center; margin-left:auto; margin-right:auto;">Drag the slider — this is the same before/after tool we'll use to show real project transformations once we have them; the two images below are stock photography demonstrating how it will look.</p>
+    <div class="pub-ba" id="baSlider">
+      <img src="https://images.unsplash.com/photo-1758448755856-01d3add0177b?fm=jpg&q=75&w=1200&auto=format&fit=crop" alt="Before (illustrative)">
+      <div class="pub-ba-after" id="baAfter">
+        <img src="https://images.unsplash.com/photo-1749930206000-179d0b85aa7e?fm=jpg&q=75&w=1200&auto=format&fit=crop" alt="After (illustrative)" id="baAfterImg">
+      </div>
+      <div class="pub-ba-handle" id="baHandle"></div>
+      <span class="pub-ba-tag before">Before</span>
+      <span class="pub-ba-tag after">After</span>
+    </div>
+    <p class="pub-ba-note">Illustrative only — not an actual {{ company_settings.company_name if company_settings else 'TIM RENO' }} project.</p>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function(){
+    var slider = document.getElementById('baSlider');
+    var after = document.getElementById('baAfter');
+    var afterImg = document.getElementById('baAfterImg');
+    var handle = document.getElementById('baHandle');
+    if (!slider) return;
+
+    function syncWidth(){
+      var w = slider.getBoundingClientRect().width;
+      afterImg.style.width = w + 'px';
+    }
+    function setPct(pct){
+      pct = Math.max(0, Math.min(100, pct));
+      after.style.width = pct + '%';
+      handle.style.left = pct + '%';
+    }
+    function fromClientX(clientX){
+      var rect = slider.getBoundingClientRect();
+      var pct = ((clientX - rect.left) / rect.width) * 100;
+      setPct(pct);
+    }
+
+    var dragging = false;
+    handle.addEventListener('mousedown', function(){ dragging = true; });
+    window.addEventListener('mouseup', function(){ dragging = false; });
+    window.addEventListener('mousemove', function(e){ if (dragging) fromClientX(e.clientX); });
+    handle.addEventListener('touchstart', function(){ dragging = true; }, {passive:true});
+    window.addEventListener('touchend', function(){ dragging = false; });
+    window.addEventListener('touchmove', function(e){
+      if (dragging && e.touches[0]) fromClientX(e.touches[0].clientX);
+    }, {passive:true});
+    slider.addEventListener('click', function(e){ fromClientX(e.clientX); });
+
+    window.addEventListener('resize', syncWidth);
+    syncWidth();
+    setPct(50);
+  })();
+</script>
+{% endblock %}

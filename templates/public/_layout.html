@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ company_settings.company_name if company_settings else 'TIM RENO' }} — Villa &amp; Office Renovation{% endblock %}</title>
+  <meta name="description" content="{{ company_settings.company_tagline if company_settings else 'Villa Construction, Renovations and Office Fit-out' }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
+  <style>
+    :root{
+      --p-accent:{{ company_settings.accent_color_hex if company_settings else '#c1752a' }};
+      --p-accent-light:{{ company_settings.accent_color_hex if company_settings else '#e0973f' }};
+      --p-accent-soft:#f3e5d3;
+      --p-structure:{{ company_settings.structure_color_hex if company_settings else '#2e5c7a' }};
+      --p-paper:#f7f7f4; --p-paper-raised:#fdfdfb; --p-ink:#1b2a38; --p-ink-soft:#5a6672; --p-line:#dfe2db;
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="pub">
+
+<nav class="pub-nav">
+  <div class="container">
+    <a href="{{ url_for('public.home') }}" class="pub-brand">
+      {% if company_settings and company_settings.logo_filename %}
+        <img src="{{ url_for('settings.logo') }}?v={{ company_settings.updated_at }}" alt="">
+      {% endif %}
+      <span>{{ company_settings.company_name if company_settings else 'TIM RENO' }}</span>
+    </a>
+    <button class="pub-burger" type="button" aria-label="Menu" id="pubBurger">&#9776;</button>
+    <div class="pub-links" id="pubLinks">
+      <a href="{{ url_for('public.home') }}" class="{{ 'active' if request.endpoint == 'public.home' else '' }}">Home</a>
+      <a href="{{ url_for('public.services') }}" class="{{ 'active' if request.endpoint == 'public.services' else '' }}">Services</a>
+      <a href="{{ url_for('public.about') }}" class="{{ 'active' if request.endpoint == 'public.about' else '' }}">About</a>
+      <a href="{{ url_for('public.our_work') }}" class="{{ 'active' if request.endpoint == 'public.our_work' else '' }}">Our Work</a>
+      <a href="{{ url_for('public.contact') }}" class="{{ 'active' if request.endpoint == 'public.contact' else '' }}">Contact</a>
+      <a href="{{ url_for('auth.login') }}" class="pub-login">Login</a>
+    </div>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="container" style="padding-top:20px;">
+      {% for category, message in messages %}
+        <div class="pub-flash pub-flash-{{ 'error' if category == 'error' else 'success' }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+{% block content %}{% endblock %}
+
+<footer class="pub-footer">
+  <div class="container">
+    <div class="pub-grid-2">
+      <div>
+        <a href="{{ url_for('public.home') }}" class="pub-brand" style="margin-bottom:14px;">
+          {% if company_settings and company_settings.logo_filename %}
+            <img src="{{ url_for('settings.logo') }}?v={{ company_settings.updated_at }}" alt="">
+          {% endif %}
+          <span>{{ company_settings.company_name if company_settings else 'TIM RENO' }}</span>
+        </a>
+        <p>{{ company_settings.company_tagline if company_settings else 'Villa Construction · Renovations · Office Fit-out' }}</p>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <ul>
+          {% if company_settings and (company_settings.address_line1 or company_settings.address_line2) %}
+            <li>{{ company_settings.address_line1 }}{% if company_settings.address_line2 %}<br>{{ company_settings.address_line2 }}{% endif %}</li>
+          {% endif %}
+          {% if company_settings and company_settings.phone %}<li>{{ company_settings.phone }}</li>{% endif %}
+          {% if company_settings and company_settings.email %}<li>{{ company_settings.email }}</li>{% endif %}
+        </ul>
+      </div>
+    </div>
+    <div class="bottom">
+      <span>&copy; {{ now_year }} {{ company_settings.company_name if company_settings else 'TIM RENO' }}. All rights reserved.</span>
+      <span><a href="{{ url_for('auth.login') }}" style="color:rgba(255,255,255,0.5);">Staff &amp; Vendor Login</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var burger = document.getElementById('pubBurger');
+    var links = document.getElementById('pubLinks');
+    if (burger && links){
+      burger.addEventListener('click', function(){ links.classList.toggle('is-open'); });
+    }
+  })();
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

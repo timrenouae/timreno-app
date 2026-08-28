@@ -44,11 +44,15 @@
     selectedRoomIndex = parseInt(e.target.value, 10);
   });
 
+  function addRoom(name, notes) {
+    state.rooms.push({ name: name.trim(), notes: notes || "", items: [] });
+    selectedRoomIndex = state.rooms.length - 1;
+  }
+
   $("addRoomBtn").addEventListener("click", () => {
     const name = prompt("Name this room / cabin (e.g. Kitchen, Manager's Office):");
     if (!name || !name.trim()) return;
-    state.rooms.push({ name: name.trim(), notes: "", items: [] });
-    selectedRoomIndex = state.rooms.length - 1;
+    addRoom(name, "");
     refreshRoomSelect();
     renderCart();
   });
@@ -236,6 +240,92 @@
     $("totalGrand").textContent = fmtMoney(subtotal + vatAmt);
   }
   $("metaVat").addEventListener("input", updateTotals);
+
+  // ----------------------------------------------------------- import drawing
+
+  let drawingReview = []; // [{name, sizeText, checked}]
+
+  function setDrawingStatus(msg, kind) {
+    const el = $("drawingStatus");
+    el.textContent = msg;
+    el.className = "save-status" + (kind ? ` is-${kind}` : "");
+  }
+
+  function renderDrawingReview() {
+    const box = $("drawingReviewBox");
+    if (!drawingReview.length) { box.innerHTML = ""; return; }
+    box.innerHTML = `
+      <table>
+        <thead><tr><th></th><th>Room name</th><th>Approx. size (sq ft)</th></tr></thead>
+        <tbody>
+        ${drawingReview.map((r, i) => `
+          <tr class="item-row">
+            <td><input type="checkbox" data-drawing-check="${i}" ${r.checked ? "checked" : ""}></td>
+            <td><input type="text" data-drawing-name="${i}" value="${escapeHtml(r.name)}"></td>
+            <td><input type="text" data-drawing-size="${i}" value="${escapeHtml(r.sizeText)}" placeholder="e.g. 180"></td>
+          </tr>
+        `).join("")}
+        </tbody>
+      </table>
+      <button type="button" id="addCheckedRoomsBtn" class="btn btn-secondary">Add checked rooms</button>
+    `;
+    box.querySelectorAll("[data-drawing-check]").forEach(cb =>
+      cb.addEventListener("change", () => { drawingReview[parseInt(cb.dataset.drawingCheck, 10)].checked = cb.checked; }));
+    box.querySelectorAll("[data-drawing-name]").forEach(inp =>
+      inp.addEventListener("input", () => { drawingReview[parseInt(inp.dataset.drawingName, 10)].name = inp.value; }));
+    box.querySelectorAll("[data-drawing-size]").forEach(inp =>
+      inp.addEventListener("input", () => { drawingReview[parseInt(inp.dataset.drawingSize, 10)].sizeText = inp.value; }));
+    $("addCheckedRoomsBtn").addEventListener("click", () => {
+      const checked = drawingReview.filter(r => r.checked && r.name.trim());
+      if (!checked.length) { setDrawingStatus("Check at least one room to add.", "error"); return; }
+      checked.forEach(r => {
+        const size = r.sizeText.trim();
+        const notes = size ? `Approx. ${size} sq ft (from drawing)` : "";
+        addRoom(r.name, notes);
+      });
+      refreshRoomSelect();
+      renderCart();
+      drawingReview = drawingReview.filter(r => !(r.checked && r.name.trim()));
+      renderDrawingReview();
+      setDrawingStatus(`Added ${checked.length} room(s).`, "success");
+    });
+  }
+
+  $("analyzeDrawingBtn").addEventListener("click", () => {
+    const fileInput = $("drawingFile");
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) { setDrawingStatus("Choose a drawing file first.", "error"); return; }
+    const fd = new FormData();
+    fd.append("drawing_file", file);
+    fd.append("csrf_token", CSRF_TOKEN);
+    setDrawingStatus("Analyzing drawing… this can take up to a minute.");
+    $("analyzeDrawingBtn").disabled = true;
+    fetch("/quotes/import-drawing", {
+      method: "POST",
+      headers: { "X-CSRF-Token": CSRF_TOKEN },
+      body: fd,
+    })
+      .then(async (r) => {
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error || "Drawing analysis failed.");
+        return body;
+      })
+      .then((body) => {
+        drawingReview = (body.rooms || []).map(r => ({
+          name: r.name,
+          sizeText: r.approx_sqft != null ? String(Math.round(r.approx_sqft)) : "",
+          checked: true,
+        }));
+        renderDrawingReview();
+        if (body.message) {
+          setDrawingStatus(body.message, drawingReview.length ? "success" : "error");
+        } else {
+          setDrawingStatus(`Found ${drawingReview.length} room(s) — review below, then add.`, "success");
+        }
+      })
+      .catch((err) => setDrawingStatus(err.message, "error"))
+      .finally(() => { $("analyzeDrawingBtn").disabled = false; });
+  });
 
   // ---------------------------------------------------------------- terms
 

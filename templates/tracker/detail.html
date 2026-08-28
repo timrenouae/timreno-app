@@ -7,6 +7,7 @@
     <h1 style="margin-bottom:2px;">{{ quote.quote_number }}</h1>
     <p class="sub" style="margin-bottom:0;">{{ quote.client_name or '—' }} &middot; {{ quote.project_name or '—' }}</p>
   </div>
+  {% if 'quotes.manage' in current_permissions %}
   <form method="post" action="{{ url_for('quotes.stage_change', quote_id=quote.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="field" style="margin-bottom:0;">
@@ -16,6 +17,12 @@
       </select>
     </div>
   </form>
+  {% else %}
+  <div class="field" style="margin-bottom:0;">
+    <label>Stage</label>
+    <div>{{ quote.stage }}</div>
+  </div>
+  {% endif %}
 </div>
 
 <div class="panel">
@@ -27,6 +34,7 @@
   </div>
 </div>
 
+{% if 'quotes.manage' in current_permissions %}
 <div class="panel">
   <h2>Budget</h2>
   <div class="budget-box">
@@ -90,6 +98,7 @@
     </div>
   </form>
 </div>
+{% endif %}
 
 <div class="panel">
   <h2>Tasks</h2>
@@ -103,8 +112,9 @@
           {% if t.status == 'completed' %}
             <span title="Completed">&#10003;</span>
           {% else %}
-            <form method="post" action="{{ url_for('tracker.complete_task', quote_id=quote.id, task_id=t.id) }}" onsubmit="return confirm('Mark this item installed? Its deadline and assignments will then be locked.');">
+            <form method="post" action="{{ url_for('tracker.complete_task', quote_id=quote.id, task_id=t.id) }}" enctype="multipart/form-data" onsubmit="return confirm('Mark this item installed? Its deadline and assignments will then be locked.');" style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="file" name="photo" accept="image/png,image/jpeg" required style="font-size:0.75rem; max-width:160px;">
               <button type="submit" class="btn btn-ghost" title="Mark complete">Mark done</button>
             </form>
           {% endif %}
@@ -115,10 +125,15 @@
             {% if t.source == 'custom' %}<span class="badge badge-accent">Custom</span>{% endif %}
           </div>
           <div class="task-meta" style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:0.82rem; color:var(--ink-soft); margin-bottom:8px;">
-            <span>Weight: {{ "%.2f"|format(t.weight or 0) }}</span>
+            {% if 'quotes.manage' in current_permissions %}<span>Weight: {{ "%.2f"|format(t.weight or 0) }}</span>{% endif %}
             {% if t.status == 'completed' %}
               <span class="completed-stamp">Completed {{ t.completed_at }}</span>
-            {% else %}
+              {% if t.photo_filename %}
+                <a href="{{ url_for('tracker.task_photo', task_id=t.id) }}" target="_blank" rel="noopener">
+                  <img src="{{ url_for('tracker.task_photo', task_id=t.id) }}" alt="Completion photo" class="task-photo-thumb">
+                </a>
+              {% endif %}
+            {% elif 'quotes.manage' in current_permissions %}
               <form method="post" action="{{ url_for('tracker.set_task_deadline', quote_id=quote.id, task_id=t.id) }}" style="display:inline-flex; gap:6px; align-items:center;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <label for="deadline-{{ t.id }}" style="margin:0;">Deadline</label>
@@ -127,6 +142,7 @@
               </form>
             {% endif %}
           </div>
+          {% if 'quotes.manage' in current_permissions %}
           <div class="task-assign" style="display:flex; flex-wrap:wrap; gap:6px;">
             {% for m in team %}
               {% set assigned_ids = t.assigned | map(attribute='id') | list %}
@@ -142,6 +158,7 @@
             <button type="submit" class="remove-link">Delete task</button>
           </form>
           {% endif %}
+          {% endif %}
         </div>
       </div>
     </div>
@@ -151,6 +168,7 @@
     <div class="empty-state">No tasks yet.</div>
   {% endif %}
 
+  {% if 'quotes.manage' in current_permissions %}
   <h2 style="margin-top:20px;">Add a custom task</h2>
   <form method="post" action="{{ url_for('tracker.add_task', quote_id=quote.id) }}" class="form-grid" style="align-items:end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -166,8 +184,10 @@
       <button type="submit" class="btn btn-secondary">+ Add task</button>
     </div>
   </form>
+  {% endif %}
 </div>
 
+{% if 'quotes.manage' in current_permissions %}
 <div class="panel">
   <h2>Expenses</h2>
   {% if expenses %}
@@ -211,9 +231,12 @@
     </div>
   </form>
 </div>
+{% endif %}
 
 <div class="panel">
   <a href="{{ url_for('tracker.list_view') }}" class="btn btn-ghost">← Back to Project Tracker</a>
-  <a href="{{ url_for('quotes.pdf_view', quote_id=quote.id) }}" class="btn btn-ghost">Download quote PDF</a>
+  {% if 'quotes.manage' in current_permissions %}
+    <a href="{{ url_for('quotes.pdf_view', quote_id=quote.id) }}" class="btn btn-ghost">Download quote PDF</a>
+  {% endif %}
 </div>
 {% endblock %}

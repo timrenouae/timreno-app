@@ -61,3 +61,16 @@ LOGIN_LOCKOUT_SECONDS = int(os.environ.get("TIMR_LOGIN_LOCKOUT_SECONDS", 15 * 60
 COOKIE_SECURE = os.environ.get("TIMR_COOKIE_SECURE", "1") != "0"
 
 DEBUG = os.environ.get("TIMR_DEBUG", "0") == "1"
+
+# --------------------------------------------------------- drawing import
+# "Import from Drawing" in the Quote Builder (see
+# /root/.claude/plans/iridescent-plotting-umbrella.md, Item 1). Uses the
+# user's own Anthropic API key/billing -- this is a real per-import cost on
+# their own account, not something bundled into the app. Left unset by
+# default; the feature returns a clean "not configured yet" error rather
+# than crashing when it's missing (see blueprints/quotes.py).
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
+# Overridable without a code change if the user wants to trade accuracy for
+# cost/speed (e.g. a cheaper/faster model) or move to a newer model later.
+DRAWING_MODEL = os.environ.get("TIMR_DRAWING_MODEL", "claude-sonnet-5")

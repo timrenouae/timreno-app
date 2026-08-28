@@ -1,0 +1,60 @@
+{% extends "public/_layout.html" %}
+{% block title %}Services — {{ company_settings.company_name if company_settings else 'TIM RENO' }}{% endblock %}
+{% block content %}
+
+<section class="pub-subhero">
+  <div class="container">
+    <p class="eyebrow">Services</p>
+    <h1>Three service lines, one accountable team</h1>
+    <p>Whatever the scope, every project is scoped, quoted and tracked the same disciplined way.</p>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container pub-grid-2" style="align-items:center;">
+    <div>
+      <p class="eyebrow">Villa Renovation</p>
+      <h2>Full-villa remodels, coordinated end to end</h2>
+      <p style="color:var(--p-ink-soft); max-width:56ch;">From structural changes and MEP upgrades to flooring, kitchens, bathrooms and outdoor spaces, we plan the full scope up front so trades don't collide on-site and nothing gets forgotten. You get one itemized quote covering the entire villa, and one team accountable for the whole job — not a stack of separate contractors to manage yourself.</p>
+    </div>
+    <div class="pub-card" style="margin:0;">
+      <div class="pub-card-img" style="height:280px; background-image:url('https://images.unsplash.com/photo-1613977257363-707ba9348227?fm=jpg&q=75&w=1000&auto=format&fit=crop');"></div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section alt pub-reveal">
+  <div class="container pub-grid-2" style="align-items:center;">
+    <div class="pub-card" style="margin:0; order:2;">
+      <div class="pub-card-img" style="height:280px; background-image:url('https://images.unsplash.com/photo-1758448755856-01d3add0177b?fm=jpg&q=75&w=1000&auto=format&fit=crop');"></div>
+    </div>
+    <div style="order:1;">
+      <p class="eyebrow">Interior Fit-out</p>
+      <h2>Joinery, finishes and furnishing that finish the story</h2>
+      <p style="color:var(--p-ink-soft); max-width:56ch;">Custom joinery, wall and floor finishes, lighting design and furnishing — the layer that turns a bare or dated interior into a space that actually feels finished. We work from your brief and budget, with material and brand choices you approve at every step, not surprises at handover.</p>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container pub-grid-2" style="align-items:center;">
+    <div>
+      <p class="eyebrow">Office Remodeling</p>
+      <h2>Workspace fit-outs with minimal downtime</h2>
+      <p style="color:var(--p-ink-soft); max-width:56ch;">Layout redesign, partitioning, cabling and finishes for offices that need to keep running while the work happens. We phase the build around your team's schedule and hand over a workspace designed for how people actually use it day to day.</p>
+    </div>
+    <div class="pub-card" style="margin:0;">
+      <div class="pub-card-img" style="height:280px; background-image:url('https://images.unsplash.com/photo-1746021535489-00edc5efb203?fm=jpg&q=75&w=1000&auto=format&fit=crop');"></div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-cta-band pub-reveal">
+  <div class="container">
+    <h2>Not sure which service fits your project?</h2>
+    <p>Send us a few details and we'll help you scope it out — no obligation.</p>
+    <a href="{{ url_for('public.contact') }}" class="pub-btn pub-btn-primary">Get a Free Quote</a>
+  </div>
+</section>
+
+{% endblock %}

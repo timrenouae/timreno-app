@@ -28,7 +28,13 @@
           {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
         </td>
         <td>{{ po.created_at[:10] }}</td>
-        <td style="text-align:right;"><a href="{{ url_for('purchases.detail_view', po_id=po.id) }}" class="btn btn-ghost">Open</a></td>
+        <td style="text-align:right; white-space:nowrap;">
+          <a href="{{ url_for('purchases.detail_view', po_id=po.id) }}" class="btn btn-ghost">Open</a>
+          <form method="post" action="{{ url_for('purchases.duplicate', po_id=po.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-ghost">Duplicate</button>
+          </form>
+        </td>
       </tr>
     {% endfor %}
     </tbody>

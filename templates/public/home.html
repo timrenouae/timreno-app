@@ -1,0 +1,106 @@
+{% extends "public/_layout.html" %}
+{% block title %}{{ company_settings.company_name if company_settings else 'TIM RENO' }} — Villa &amp; Office Renovation{% endblock %}
+{% block content %}
+
+<section class="pub-hero" style="background-image:url('https://images.unsplash.com/photo-1613977257363-707ba9348227?fm=jpg&q=75&w=1920&auto=format&fit=crop');">
+  <div class="container">
+    <p class="eyebrow">{{ company_settings.company_tagline if company_settings else 'Villa Construction · Renovations · Office Fit-out' }}</p>
+    <h1>Renovations built around how you actually live and work.</h1>
+    <p class="lead">{{ company_settings.company_name if company_settings else 'TIM RENO' }} plans, builds and hands over villa renovations, interior fit-outs and office remodels — one clear quote, one accountable team, start to finish.</p>
+    <div class="pub-cta-row">
+      <a href="{{ url_for('public.contact') }}" class="pub-btn pub-btn-primary">Get a Free Quote</a>
+      <a href="{{ url_for('public.our_work') }}" class="pub-btn pub-btn-ghost">See Our Work</a>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container">
+    <p class="eyebrow">What we do</p>
+    <h2>Three ways we help you build better</h2>
+    <p class="sub">From a full villa renovation to a single office fit-out, every job runs through the same disciplined process — a clear scope, an itemized quote, and a team that shows up.</p>
+    <div class="pub-grid-3">
+      <div class="pub-card">
+        <div class="pub-card-img" style="background-image:url('https://images.unsplash.com/photo-1613977257363-707ba9348227?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+        <div class="pub-card-body">
+          <h3>Villa Renovation</h3>
+          <p>Full-villa remodels — structural changes, MEP, flooring, kitchens and bathrooms — coordinated under one roof.</p>
+          <a href="{{ url_for('public.services') }}" class="pub-link">Learn more →</a>
+        </div>
+      </div>
+      <div class="pub-card">
+        <div class="pub-card-img" style="background-image:url('https://images.unsplash.com/photo-1758448755856-01d3add0177b?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+        <div class="pub-card-body">
+          <h3>Interior Fit-out</h3>
+          <p>Joinery, finishes, lighting and furnishing that turn a bare or dated interior into a finished space.</p>
+          <a href="{{ url_for('public.services') }}" class="pub-link">Learn more →</a>
+        </div>
+      </div>
+      <div class="pub-card">
+        <div class="pub-card-img" style="background-image:url('https://images.unsplash.com/photo-1746021535489-00edc5efb203?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+        <div class="pub-card-body">
+          <h3>Office Remodeling</h3>
+          <p>Workspace fit-outs designed for how your team actually works, delivered with minimal downtime.</p>
+          <a href="{{ url_for('public.services') }}" class="pub-link">Learn more →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section alt pub-reveal">
+  <div class="container">
+    <p class="eyebrow">Why {{ company_settings.company_name if company_settings else 'TIM RENO' }}</p>
+    <h2>Built on clear numbers and one point of contact</h2>
+    <div class="pub-highlights" style="margin-top:30px;">
+      <div class="pub-highlight">
+        <div class="num">1</div>
+        <div class="lbl">Itemized quote before any work begins — no surprise line items</div>
+      </div>
+      <div class="pub-highlight">
+        <div class="num">2</div>
+        <div class="lbl">Photo-verified progress on every task, visible on your own dashboard</div>
+      </div>
+      <div class="pub-highlight">
+        <div class="num">3</div>
+        <div class="lbl">Vendors compared side-by-side so materials are priced fairly</div>
+      </div>
+      <div class="pub-highlight">
+        <div class="num">4</div>
+        <div class="lbl">One accountable team from first consult to final handover</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container">
+    <p class="eyebrow">Our Work</p>
+    <h2>The kind of spaces we build</h2>
+    <p class="sub">We're a new company, so what follows is design inspiration for the quality bar we hold ourselves to — real project photography is on its way as we complete jobs.</p>
+    <div class="pub-grid-3">
+      <figure class="pub-card" style="margin:0;">
+        <div class="pub-card-img" style="height:200px; background-image:url('https://images.unsplash.com/photo-1682888813913-e13f18692019?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+      </figure>
+      <figure class="pub-card" style="margin:0;">
+        <div class="pub-card-img" style="height:200px; background-image:url('https://images.unsplash.com/photo-1754522711595-84428937b07a?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+      </figure>
+      <figure class="pub-card" style="margin:0;">
+        <div class="pub-card-img" style="height:200px; background-image:url('https://images.unsplash.com/photo-1749930206000-179d0b85aa7e?fm=jpg&q=70&w=900&auto=format&fit=crop');"></div>
+      </figure>
+    </div>
+    <div style="text-align:center; margin-top:30px;">
+      <a href="{{ url_for('public.our_work') }}" class="pub-btn pub-btn-dark">View the full gallery</a>
+    </div>
+  </div>
+</section>
+
+<section class="pub-cta-band pub-reveal">
+  <div class="container">
+    <h2>Ready to talk about your project?</h2>
+    <p>Tell us about your villa, office or renovation project and we'll get back to you with next steps.</p>
+    <a href="{{ url_for('public.contact') }}" class="pub-btn pub-btn-primary">Get a Free Quote</a>
+  </div>
+</section>
+
+{% endblock %}

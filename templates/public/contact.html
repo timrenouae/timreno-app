@@ -1,0 +1,65 @@
+{% extends "public/_layout.html" %}
+{% block title %}Contact — {{ company_settings.company_name if company_settings else 'TIM RENO' }}{% endblock %}
+{% block content %}
+
+<section class="pub-subhero">
+  <div class="container">
+    <p class="eyebrow">Contact</p>
+    <h1>Tell us about your project</h1>
+    <p>Share a few details and we'll get back to you with next steps — there's no obligation.</p>
+  </div>
+</section>
+
+<section class="pub-section pub-reveal">
+  <div class="container pub-contact-grid">
+    <div>
+      <h2 style="font-size:1.3rem;">Get in touch</h2>
+      <ul class="pub-info-list">
+        {% if company_settings and (company_settings.address_line1 or company_settings.address_line2) %}
+        <li><span class="k">Address</span><span>{{ company_settings.address_line1 }}{% if company_settings.address_line2 %}<br>{{ company_settings.address_line2 }}{% endif %}</span></li>
+        {% endif %}
+        {% if company_settings and company_settings.phone %}
+        <li><span class="k">Phone</span><span>{{ company_settings.phone }}</span></li>
+        {% endif %}
+        {% if company_settings and company_settings.email %}
+        <li><span class="k">Email</span><span>{{ company_settings.email }}</span></li>
+        {% endif %}
+        {% if company_settings and company_settings.website %}
+        <li><span class="k">Web</span><span>{{ company_settings.website }}</span></li>
+        {% endif %}
+        <li><span class="k">Hours</span><span>Sunday – Thursday, 9:00 AM – 6:00 PM</span></li>
+      </ul>
+      <div class="pub-map">
+        {% if company_settings and (company_settings.address_line1 or company_settings.address_line2) %}
+          Map preview coming soon — for now, our site address is above.
+        {% else %}
+          Map preview coming soon.
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      <form method="post" class="pub-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" value="{{ form.name or '' }}" required>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" value="{{ form.email or '' }}">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input type="text" id="phone" name="phone" value="{{ form.phone or '' }}">
+        </div>
+        <div class="field">
+          <label for="message">Tell us about your project</label>
+          <textarea id="message" name="message" required>{{ form.message or '' }}</textarea>
+        </div>
+        <button type="submit" class="pub-btn pub-btn-primary" style="width:100%;">Send message</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

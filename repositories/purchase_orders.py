@@ -77,6 +77,19 @@ def create_purchase_order(conn, supplier_id, notes, created_by, items):
     return po_id
 
 
+def update_po_details(conn, po_id, payment_terms, expected_delivery_date, ship_to_address):
+    """Updates the per-PO (not company-wide) Item 4 fields -- payment terms
+    negotiated with this supplier for this order, expected delivery date,
+    and ship-to address. Caller (blueprints/purchases.py) already enforces
+    the draft/sent-only edit gate before calling this; all three values are
+    nullable/optional here too, so clearing a field back to blank is fine."""
+    conn.execute(
+        """UPDATE purchase_orders SET payment_terms = ?, expected_delivery_date = ?, ship_to_address = ?
+           WHERE id = ?""",
+        (payment_terms, expected_delivery_date, ship_to_address, po_id),
+    )
+
+
 def mark_sent(conn, po_id):
     conn.execute(
         "UPDATE purchase_orders SET status = 'sent' WHERE id = ? AND status = 'draft'", (po_id,)

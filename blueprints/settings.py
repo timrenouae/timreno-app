@@ -3,6 +3,8 @@ settings.manage) edit company details and PDF branding/content directly
 from the app, without a code change. See repositories/settings.py and
 pdf/theme.py for where this data actually lives and gets used.
 """
+import json
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, Response, send_from_directory
 
 import auth
@@ -18,6 +20,53 @@ from pdf.purchase_order import build_purchase_order_pdf
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
 _PDF_FONT_CHOICES = ["Helvetica", "Times", "Courier"]
+
+
+def _parse_table_columns(raw_json):
+    """Validates a posted column-config JSON string (the hidden field kept
+    in sync by templates/settings/documents.html's column-editor JS).
+    Raises ValueError with a user-facing message on anything malformed, so
+    a corrupt/tampered payload is rejected rather than silently stored as
+    garbage. Returns a clean list of {key, label, enabled} dicts, in
+    posted order, ready for json.dumps() straight into company_settings."""
+    try:
+        parsed = json.loads(raw_json) if raw_json else None
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, list) or not parsed:
+        raise ValueError("Column configuration was corrupted -- please try again.")
+
+    cleaned = []
+    seen_keys = set()
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            raise ValueError("Column configuration was corrupted -- please try again.")
+        key, label, enabled = entry.get("key"), entry.get("label"), entry.get("enabled")
+        if not isinstance(key, str) or not key or key in seen_keys:
+            raise ValueError("Column configuration was corrupted -- please try again.")
+        if not isinstance(label, str) or not isinstance(enabled, bool):
+            raise ValueError("Column configuration was corrupted -- please try again.")
+        seen_keys.add(key)
+        cleaned.append({"key": key, "label": label.strip() or key.upper(), "enabled": enabled})
+
+    if not any(c["key"] == "description" for c in cleaned):
+        raise ValueError("The Description column can't be removed.")
+    return cleaned
+
+
+def _load_table_columns(raw_json, defaults):
+    """GET-side counterpart: best-effort read of the stored column config
+    for prefilling the column editor, falling back to the same hardcoded
+    defaults pdf/theme.py: resolve_columns() would -- never raises, since a
+    corrupt stored value here should just show the default editor, not
+    break the Settings page."""
+    try:
+        parsed = json.loads(raw_json) if raw_json else None
+        if isinstance(parsed, list) and parsed:
+            return parsed
+    except (TypeError, ValueError):
+        pass
+    return defaults
 
 
 # --------------------------------------------------------------- company info
@@ -90,20 +139,34 @@ def documents_view():
             if trailing_order not in ("terms_then_bank", "bank_then_terms"):
                 trailing_order = "terms_then_bank"
 
+            try:
+                quote_columns = _parse_table_columns(request.form.get("quote_table_columns"))
+                po_columns = _parse_table_columns(request.form.get("po_table_columns"))
+            except ValueError as e:
+                flash(str(e), "error")
+                return redirect(url_for("settings.documents_view"))
+
             fields = {
                 "accent_color_hex": (request.form.get("accent_color_hex") or "#c1752a").strip(),
                 "structure_color_hex": (request.form.get("structure_color_hex") or "#2e5c7a").strip(),
                 "pdf_font": pdf_font,
                 "show_bank_details_on_quote": 1 if request.form.get("show_bank_details_on_quote") else 0,
                 "show_bank_details_on_estimate": 1 if request.form.get("show_bank_details_on_estimate") else 0,
+                "show_bank_details_on_po": 1 if request.form.get("show_bank_details_on_po") else 0,
                 "quote_trailing_block_order": trailing_order,
                 "estimate_disclaimer_text": (request.form.get("estimate_disclaimer_text") or "").strip(),
+                "quote_table_columns": json.dumps(quote_columns),
+                "po_table_columns": json.dumps(po_columns),
             }
             settings_repo.update_settings(conn, fields, auth.current_user()["id"])
 
             terms_text = request.form.get("default_terms") or ""
             terms = [line.strip() for line in terms_text.splitlines() if line.strip()]
             settings_repo.save_default_terms(conn, terms)
+
+            po_terms_text = request.form.get("po_terms") or ""
+            po_terms = [line.strip() for line in po_terms_text.splitlines() if line.strip()]
+            settings_repo.save_po_terms(conn, po_terms)
 
             audit_repo.log(conn, auth.current_user()["id"], "update", "company_settings", None,
                             "document builder")
@@ -113,8 +176,12 @@ def documents_view():
     with db.connect() as conn:
         settings_row = settings_repo.get_settings(conn)
         default_terms = settings_repo.get_default_terms(conn)
+        po_terms = settings_repo.get_po_terms(conn)
+    quote_columns = _load_table_columns(settings_row["quote_table_columns"], pdf_theme.QUOTE_DEFAULT_COLUMNS)
+    po_columns = _load_table_columns(settings_row["po_table_columns"], pdf_theme.PO_DEFAULT_COLUMNS)
     return render_template(
         "settings/documents.html", settings=settings_row, default_terms=default_terms,
+        po_terms=po_terms, quote_columns=quote_columns, po_columns=po_columns,
         font_choices=_PDF_FONT_CHOICES, csrf_token=auth.generate_csrf_token(),
     )
 

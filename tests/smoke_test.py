@@ -16,6 +16,37 @@ Covers, per the approved plan's verification section:
   6. PDF endpoint returns a non-empty application/pdf response.
   7. Role/last-admin protections: can't delete the Admin role, can't strip
      users.manage/roles.manage from the last admin-capable user.
+  ...
+  Item 4 (PO product search, payment terms/delivery info, DRAFT watermark,
+  signature line, duplicate): the products/search endpoint filters correctly;
+  update-details round-trips and blank fields null out (not empty strings);
+  a draft PO's rendered PDF is provably larger than the identical content
+  marked sent (DRAFT watermark actually draws extra content, not just a
+  status label); duplicate copies supplier/items/payment_terms/ship_to as
+  fresh snapshot rows but leaves expected_delivery_date blank and status
+  reset to draft.
+
+  Item 1 (Quote Builder "Import from Drawing", POST /quotes/import-drawing):
+  request validation (missing file, disallowed extension, oversized file all
+  return a clean 4xx JSON error rather than a crash), the route is
+  permission- and CSRF-gated the same as every other quotes.manage mutation,
+  and -- with no ANTHROPIC_API_KEY set (the state of this sandbox, since the
+  `anthropic` package could not be installed here -- see NOTE below) -- the
+  route returns a clean "not configured" 503 instead of raising. The
+  Anthropic-SDK-calling code path itself (request construction, tool_use
+  response parsing, exception-to-JSON error mapping) is exercised separately
+  against a hand-built stub substituted for the `anthropic` module, since a
+  real package install and a real API key are both unavailable in this
+  sandbox -- see the "drawing import: stubbed Anthropic SDK" section below.
+
+  NOTE: this sandbox has no outbound access to pypi.org/files.pythonhosted.org
+  (network egress policy), so the real `anthropic` package could not be
+  pip-installed or exercised end-to-end here. blueprints/quotes.py imports it
+  defensively (falls back to None) for exactly this reason, and the route
+  degrades to the "not configured" 503 whenever either the package or the API
+  key is missing -- verified below. Live drawing analysis against the real
+  Anthropic API is UNTESTED in this environment and must be verified once a
+  real ANTHROPIC_API_KEY is set in production.
 
 Run against a throwaway database (never the dev/prod one):
     TIMR_DB_PATH=/tmp/timr_smoke_test.db python3 tests/smoke_test.py
@@ -39,6 +70,7 @@ migrate.apply_migrations()
 migrate.seed_permissions_and_admin_role()
 
 import auth  # noqa: E402
+import config  # noqa: E402
 import db  # noqa: E402
 import repositories.users as users_repo  # noqa: E402
 import repositories.roles as roles_repo  # noqa: E402
@@ -46,6 +78,12 @@ import repositories.products as products_repo  # noqa: E402
 import repositories.quotes as quotes_repo  # noqa: E402
 import repositories.tracker as tracker_repo  # noqa: E402
 import repositories.settings as settings_repo  # noqa: E402
+import repositories.purchase_orders as po_repo  # noqa: E402
+import repositories.suppliers as suppliers_repo  # noqa: E402
+import repositories.requisitions as requisitions_repo  # noqa: E402
+import repositories.public as public_repo  # noqa: E402
+import pdf.theme as pdf_theme  # noqa: E402
+import pdf.purchase_order as pdf_po  # noqa: E402
 from app import app  # noqa: E402
 
 app.testing = True
@@ -476,6 +514,38 @@ check("send-to-builder quote terms are actually empty", len(sent_terms) == 0)
 check("send-to-builder unconditionally bumps the counter by 1", counter_after_send == counter_before_send + 1)
 check("send-to-builder job_notes mentions the Rough Estimator", "Rough Estimator" in (sent_quote["job_notes"] or ""))
 
+
+def _make_1px_png():
+    """Builds a real, valid 1x1 grayscale PNG from scratch (zlib + struct,
+    no imaging library needed) -- exercises the actual image-decode path
+    rather than faking a file with arbitrary bytes. Defined here (ahead of
+    the Item 2 task-completion-photo tests below, which need a real PNG
+    well before the Item 3 Document Builder section reaches its own use of
+    the same helper further down)."""
+    import struct
+    import zlib
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+    raw = b"\x00\x00"  # filter byte (0) + one grayscale pixel byte (0)
+    idat = chunk(b"IDAT", zlib.compress(raw))
+    iend = chunk(b"IEND", b"")
+    return sig + ihdr + idat + iend
+
+
+_PNG_1PX = _make_1px_png()
+
+
+def _photo_file(name="task.png"):
+    """A fresh BytesIO each call -- a Werkzeug FileStorage consumes its
+    stream on save, so the same io.BytesIO object can't be reused across
+    two upload attempts."""
+    return (io.BytesIO(_PNG_1PX), name)
+
+
 # ------------------------------------------------------------- 12. tracker
 resp = client.get("/tracker/")
 check("tracker list page loads (200)", resp.status_code == 200)
@@ -522,10 +592,29 @@ check("setting a deadline on a pending task works", deadline_set["deadline"] == 
 
 resp = client.get(f"/tracker/{quote_full_id}")
 tracker_csrf = get_csrf(resp.get_data(as_text=True))
-resp = client.post(f"/tracker/{quote_full_id}/tasks/{task_id}/complete", data={"csrf_token": tracker_csrf}, follow_redirects=True)
+resp = client.post(f"/tracker/{quote_full_id}/tasks/{task_id}/complete",
+                    data={"csrf_token": tracker_csrf}, follow_redirects=True)
+check("completing a task with no photo attached is rejected (photo now required)",
+      "Attach a photo" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    not_completed = conn.execute("SELECT * FROM quote_tasks WHERE id=?", (task_id,)).fetchone()
+check("the no-photo completion attempt did not actually complete the task", not_completed["status"] == "pending")
+
+resp = client.get(f"/tracker/{quote_full_id}")
+tracker_csrf = get_csrf(resp.get_data(as_text=True))
+resp = client.post(f"/tracker/{quote_full_id}/tasks/{task_id}/complete",
+                    data={"csrf_token": tracker_csrf, "photo": _photo_file()},
+                    content_type="multipart/form-data", follow_redirects=True)
 with db.connect() as conn:
     completed_task = conn.execute("SELECT * FROM quote_tasks WHERE id=?", (task_id,)).fetchone()
 check("completing a task sets status + completed_at", completed_task["status"] == "completed" and completed_task["completed_at"] is not None)
+check("completing a task with a valid photo stores a photo_filename", bool(completed_task["photo_filename"]))
+check("completed task's photo thumbnail appears on the tracker detail page",
+      "task-photo-thumb" in resp.get_data(as_text=True))
+
+resp = client.get(f"/tracker/tasks/{task_id}/photo")
+check("staff can view the completed task's photo (200)", resp.status_code == 200)
+check("task photo is served with the real PNG bytes", resp.data[:8] == bytes.fromhex("89504e470d0a1a0a"))
 
 # immutability: deadline / delete are rejected once completed
 resp = client.get(f"/tracker/{quote_full_id}")
@@ -545,7 +634,9 @@ check("deleting a completed task is rejected", still_there is not None)
 
 resp = client.get(f"/tracker/{quote_full_id}")
 tracker_csrf = get_csrf(resp.get_data(as_text=True))
-resp = client.post(f"/tracker/{quote_full_id}/tasks/{task_id}/complete", data={"csrf_token": tracker_csrf}, follow_redirects=True)
+resp = client.post(f"/tracker/{quote_full_id}/tasks/{task_id}/complete",
+                    data={"csrf_token": tracker_csrf, "photo": _photo_file()},
+                    content_type="multipart/form-data", follow_redirects=True)
 check("completing an already-completed task is rejected (idempotent, no overwrite)",
       "already been marked completed" in resp.get_data(as_text=True))
 
@@ -627,7 +718,9 @@ zw_html = resp.get_data(as_text=True)
 zw_csrf = get_csrf(zw_html)
 with db.connect() as conn:
     zw_task = conn.execute("SELECT * FROM quote_tasks WHERE quote_id=?", (zw_quote_id,)).fetchone()
-resp = client.post(f"/tracker/{zw_quote_id}/tasks/{zw_task['id']}/complete", data={"csrf_token": zw_csrf}, follow_redirects=True)
+resp = client.post(f"/tracker/{zw_quote_id}/tasks/{zw_task['id']}/complete",
+                    data={"csrf_token": zw_csrf, "photo": _photo_file()},
+                    content_type="multipart/form-data", follow_redirects=True)
 progress = tracker_repo.compute_progress([dict(t) for t in [zw_task]])
 with db.connect() as conn:
     zw_tasks_after = [dict(t) for t in conn.execute("SELECT * FROM quote_tasks WHERE quote_id=?", (zw_quote_id,)).fetchall()]
@@ -692,6 +785,165 @@ check("customer is blocked (403) from downloading the quote PDF", resp.status_co
 resp = customer_client.get(f"/portal/{high_quote_id}")
 check("customer is blocked (403) from a quote NOT linked to them (ownership check)", resp.status_code == 403)
 
+resp = customer_client.get(f"/tracker/tasks/{task_id}/photo")
+check("linked customer can view a completed task's photo on their own project (200)", resp.status_code == 200)
+check("photo served to the customer is the real PNG bytes", resp.data[:8] == bytes.fromhex("89504e470d0a1a0a"))
+
+# -------------------------------------- Item 2: Engineer login (photo-proof
+# task completion) -- new tracker.complete_tasks permission, simplified
+# Tracker views, required completion photo, customer-visible photos.
+with db.connect() as conn:
+    engineer_role_id = roles_repo.create_role(conn, "Engineer")
+    roles_repo.set_role_permissions(conn, engineer_role_id, {"tracker.complete_tasks"})
+    pw_hash4, salt4, iters4 = auth.hash_password("EngineerPass123!")
+    engineer_id = users_repo.create_user(conn, "smoketest_engineer", "Smoke Engineer", pw_hash4, salt4, iters4, engineer_role_id)
+
+engineer_client = app.test_client()
+r = engineer_client.get("/auth/login")
+c = get_csrf(r.get_data(as_text=True))
+engineer_client.post("/auth/login", data={"username": "smoketest_engineer", "password": "EngineerPass123!", "csrf_token": c})
+
+check("is_portal_only_user recognizes an Engineer-only permission set", auth.is_portal_only_user({"tracker.complete_tasks"}))
+check("is_portal_only_user recognizes a Customer-only permission set", auth.is_portal_only_user({"tracker.view_own"}))
+check("is_portal_only_user is False for a genuinely internal permission set", not auth.is_portal_only_user({"purchases.manage"}))
+check("default_landing_endpoint sends an Engineer-only account to the Tracker list",
+      auth.default_landing_endpoint({"tracker.complete_tasks"}) == "tracker.list_view")
+
+resp = engineer_client.get("/", follow_redirects=True)
+engineer_home_html = resp.get_data(as_text=True)
+check("Engineer login lands on the (simplified) Tracker list, not Product Master",
+      "Project Tracker" in engineer_home_html and "Product Master" not in engineer_home_html)
+check("Engineer's nav shows 'My Tasks', not 'Project Tracker'/'Quotes'/'Product Master'",
+      "My Tasks" in engineer_home_html and ">Quotes<" not in engineer_home_html
+      and ">Product Master<" not in engineer_home_html)
+
+resp = engineer_client.get("/tracker/")
+check("Engineer can reach the Tracker list (200)", resp.status_code == 200)
+engineer_list_html = resp.get_data(as_text=True)
+check("Engineer's Tracker list hides the Quoted value / Budget columns and the $ stats row",
+      "Quoted value" not in engineer_list_html and ">Budget<" not in engineer_list_html
+      and "Over budget" not in engineer_list_html)
+check("Engineer's Tracker list still shows quote number / client / an Open tracker link",
+      room_a_payload["quote_number"] in engineer_list_html and "Open tracker" in engineer_list_html)
+
+resp = engineer_client.get(f"/tracker/{quote_full_id}")
+check("Engineer can open a project's Tracker detail page (200)", resp.status_code == 200)
+engineer_detail_html = resp.get_data(as_text=True)
+csrf_engineer = get_csrf(engineer_detail_html)
+check("Engineer detail view hides the Budget panel", "<h2>Budget</h2>" not in engineer_detail_html)
+check("Engineer detail view hides the Customer access panel", "Customer access" not in engineer_detail_html)
+check("Engineer detail view hides the Team panel", "<h2>Team</h2>" not in engineer_detail_html)
+check("Engineer detail view hides task Weight lines", "Weight:" not in engineer_detail_html)
+check("Engineer detail view hides the Download quote PDF link", "Download quote PDF" not in engineer_detail_html)
+check("Engineer detail view hides the Expenses panel", "<h2>Expenses</h2>" not in engineer_detail_html)
+check("Engineer detail view's stage is plain read-only text, not a submit-on-change select",
+      'id="stageSelect"' not in engineer_detail_html)
+check("Engineer detail view still shows the task checklist itself", "Site cleanup" in engineer_detail_html)
+
+with db.connect() as conn:
+    cleanup_task = conn.execute(
+        "SELECT * FROM quote_tasks WHERE quote_id=? AND description='Site cleanup'", (quote_full_id,)
+    ).fetchone()
+check("the custom 'Site cleanup' task used for the Engineer flow is still pending", cleanup_task["status"] == "pending")
+cleanup_task_id = cleanup_task["id"]
+
+resp = engineer_client.post(f"/tracker/{quote_full_id}/tasks/{cleanup_task_id}/complete",
+                             data={"csrf_token": csrf_engineer}, follow_redirects=True)
+check("Engineer completing a task with no photo attached is rejected",
+      "Attach a photo" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    still_pending = conn.execute("SELECT status FROM quote_tasks WHERE id=?", (cleanup_task_id,)).fetchone()
+check("no-photo completion attempt by the Engineer left the task pending", still_pending["status"] == "pending")
+
+resp = engineer_client.get(f"/tracker/{quote_full_id}")
+csrf_engineer = get_csrf(resp.get_data(as_text=True))
+resp = engineer_client.post(f"/tracker/{quote_full_id}/tasks/{cleanup_task_id}/complete",
+                             data={"csrf_token": csrf_engineer, "photo": (io.BytesIO(b"not a real image but has a bad ext"), "note.txt")},
+                             content_type="multipart/form-data", follow_redirects=True)
+check("a disallowed photo extension is rejected with a clear message",
+      "must be a .png, .jpg, or .jpeg" in resp.get_data(as_text=True))
+
+resp = engineer_client.get(f"/tracker/{quote_full_id}")
+csrf_engineer = get_csrf(resp.get_data(as_text=True))
+oversized = b"\xff" * (8 * 1024 * 1024 + 1)
+resp = engineer_client.post(f"/tracker/{quote_full_id}/tasks/{cleanup_task_id}/complete",
+                             data={"csrf_token": csrf_engineer, "photo": (io.BytesIO(oversized), "huge.png")},
+                             content_type="multipart/form-data", follow_redirects=True)
+check("an oversized (>8MB) photo is rejected with a clear message", "too large" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    still_pending2 = conn.execute("SELECT status FROM quote_tasks WHERE id=?", (cleanup_task_id,)).fetchone()
+check("the rejected oversized-photo attempt left the task pending", still_pending2["status"] == "pending")
+
+resp = engineer_client.get(f"/tracker/{quote_full_id}")
+csrf_engineer = get_csrf(resp.get_data(as_text=True))
+resp = engineer_client.post(f"/tracker/{quote_full_id}/tasks/{cleanup_task_id}/complete",
+                             data={"csrf_token": csrf_engineer, "photo": _photo_file("cleanup.png")},
+                             content_type="multipart/form-data", follow_redirects=True)
+with db.connect() as conn:
+    cleanup_completed = conn.execute("SELECT * FROM quote_tasks WHERE id=?", (cleanup_task_id,)).fetchone()
+check("Engineer can complete a task by attaching a valid photo",
+      cleanup_completed["status"] == "completed" and bool(cleanup_completed["photo_filename"]))
+check("the newly-completed task's thumbnail appears on the Tracker detail page",
+      "task-photo-thumb" in resp.get_data(as_text=True))
+
+resp = engineer_client.get(f"/tracker/tasks/{cleanup_task_id}/photo")
+check("Engineer can view the photo they just uploaded (200)", resp.status_code == 200)
+
+resp = engineer_client.get("/quotes/")
+check("Engineer is blocked (403) from the internal quotes list", resp.status_code == 403)
+resp = engineer_client.get("/products/")
+check("Engineer is blocked (403) from the Product Master", resp.status_code == 403)
+resp = engineer_client.get(f"/quotes/{quote_full_id}/pdf")
+check("Engineer is blocked (403) from downloading the quote PDF", resp.status_code == 403)
+resp = engineer_client.post(f"/tracker/{quote_full_id}/team/add",
+                             data={"name": "X", "role": "Labor", "csrf_token": "bad"})
+check("Engineer is blocked (403) from tracker mutations that require quotes.manage", resp.status_code == 403)
+
+# any internal account (not just the linked customer) can view a task photo --
+# a deliberate QA-record design, not an ownership restriction. Buyer holds
+# neither quotes.manage nor tracker.complete_tasks, and is unrelated to this
+# quote, yet is still "internal" (not portal-only).
+resp = buyer_client.get(f"/tracker/tasks/{cleanup_task_id}/photo")
+check("any internal account (e.g. Buyer) can view a task photo as a QA record (200)", resp.status_code == 200)
+resp = buyer_client.get(f"/tracker/{quote_full_id}")
+check("Buyer (internal, no quotes.manage/tracker.complete_tasks) can still open the Tracker detail page (unchanged)",
+      resp.status_code == 200)
+
+# a customer NOT linked to this quote is blocked from its task photos
+with db.connect() as conn:
+    other_customer_role_id = roles_repo.create_role(conn, "Customer2")
+    roles_repo.set_role_permissions(conn, other_customer_role_id, {"tracker.view_own"})
+    pw_hash5, salt5, iters5 = auth.hash_password("Customer2Pass123!")
+    users_repo.create_user(conn, "smoketest_customer2", "Smoke Customer Two", pw_hash5, salt5, iters5, other_customer_role_id)
+other_customer_client = app.test_client()
+r = other_customer_client.get("/auth/login")
+c = get_csrf(r.get_data(as_text=True))
+other_customer_client.post("/auth/login", data={"username": "smoketest_customer2", "password": "Customer2Pass123!", "csrf_token": c})
+resp = other_customer_client.get(f"/tracker/tasks/{cleanup_task_id}/photo")
+check("a customer NOT linked to this quote is blocked (403) from its task photo", resp.status_code == 403)
+
+resp = other_customer_client.get(f"/tracker/{quote_full_id}")
+check("a customer is still blocked (403) from the internal Tracker detail page", resp.status_code == 403)
+
+# regression: quotes.manage staff still see the full, unchanged Tracker
+# experience (Budget/Team/Customer-access/Weight/PDF-download all present)
+resp = client.get(f"/tracker/{quote_full_id}")
+staff_detail_html = resp.get_data(as_text=True)
+check("staff (quotes.manage) still see the Budget panel (no regression)", "<h2>Budget</h2>" in staff_detail_html)
+check("staff still see the Customer access panel (no regression)", "Customer access" in staff_detail_html)
+check("staff still see the Team panel (no regression)", "<h2>Team</h2>" in staff_detail_html)
+check("staff still see task Weight lines (no regression)", "Weight:" in staff_detail_html)
+check("staff still see the Download quote PDF link (no regression)", "Download quote PDF" in staff_detail_html)
+check("staff still see the Expenses panel (no regression)", "<h2>Expenses</h2>" in staff_detail_html)
+check("staff still get the live stage-change select, not read-only text", 'id="stageSelect"' in staff_detail_html)
+resp = client.get("/tracker/")
+staff_list_html = resp.get_data(as_text=True)
+check("staff still see the Quoted value / Budget columns on the Tracker list (no regression)",
+      "Quoted value" in staff_list_html and ">Budget<" in staff_list_html)
+
+resp = engineer_client.get(f"/tracker/tasks/999999/photo")
+check("photo route 404s for a task id that doesn't exist", resp.status_code == 404)
+
 # --------------------------------------------- 16. Settings & Document Builder
 resp = client.get("/settings/")
 check("settings company page loads (200)", resp.status_code == 200)
@@ -737,6 +989,27 @@ def _make_1px_png():
     return sig + ihdr + idat + iend
 
 
+# Item 3 -- PO content parity + configurable PDF table columns. Reordered/
+# relabeled/partly-disabled column configs (not the hardcoded defaults) so
+# the save round-trip actually exercises reordering and hiding, not just
+# echoing the seeded default JSON back.
+smoke_quote_columns = [
+    {"key": "description", "label": "ITEM", "enabled": True},
+    {"key": "brand", "label": "MAKE", "enabled": True},
+    {"key": "qty", "label": "QTY", "enabled": True},
+    {"key": "unit", "label": "UNIT", "enabled": True},
+    {"key": "unit_price", "label": "RATE", "enabled": True},
+    {"key": "amount", "label": "AMOUNT", "enabled": False},
+]
+smoke_po_columns = [
+    {"key": "description", "label": "DESCRIPTION", "enabled": True},
+    {"key": "unit_price", "label": "RATE", "enabled": True},
+    {"key": "qty", "label": "QTY", "enabled": True},
+    {"key": "unit", "label": "UNIT", "enabled": True},
+    {"key": "brand", "label": "BRAND", "enabled": False},
+    {"key": "line_total", "label": "TOTAL", "enabled": True},
+]
+
 _PNG_1PX = _make_1px_png()
 resp = client.post("/settings/documents", data={
     "csrf_token": docs_csrf,
@@ -744,20 +1017,84 @@ resp = client.post("/settings/documents", data={
     "accent_color_hex": "#123456", "structure_color_hex": "#654321",
     "pdf_font": "Times",
     "show_bank_details_on_quote": "on", "show_bank_details_on_estimate": "on",
+    "show_bank_details_on_po": "on",
     "quote_trailing_block_order": "bank_then_terms",
     "estimate_disclaimer_text": "Smoke disclaimer.",
     "default_terms": "Smoke term one.\nSmoke term two.\n\nSmoke term three.",
+    "po_terms": "Smoke PO term one.\nSmoke PO term two.\n\nSmoke PO term three.",
+    "quote_table_columns": _json.dumps(smoke_quote_columns),
+    "po_table_columns": _json.dumps(smoke_po_columns),
 }, content_type="multipart/form-data", follow_redirects=True)
 check("document builder save round-trips (200)", resp.status_code == 200)
 with db.connect() as conn:
     saved2 = settings_repo.get_settings(conn)
     saved_terms = settings_repo.get_default_terms(conn)
+    saved_po_terms = settings_repo.get_po_terms(conn)
 check("logo_filename saved", bool(saved2["logo_filename"]))
 check("pdf_font persisted", saved2["pdf_font"] == "Times")
 check("bank-details toggles persisted", saved2["show_bank_details_on_quote"] == 1 and saved2["show_bank_details_on_estimate"] == 1)
 check("trailing block order persisted", saved2["quote_trailing_block_order"] == "bank_then_terms")
 check("estimate disclaimer persisted", saved2["estimate_disclaimer_text"] == "Smoke disclaimer.")
 check("default terms saved in order, blank line skipped", saved_terms == ["Smoke term one.", "Smoke term two.", "Smoke term three."])
+
+# ---- Item 3: PO content parity (bank toggle + PO terms) ----
+check("show_bank_details_on_po persisted", saved2["show_bank_details_on_po"] == 1)
+check("PO terms saved in order, blank line skipped",
+      saved_po_terms == ["Smoke PO term one.", "Smoke PO term two.", "Smoke PO term three."])
+
+# ---- Item 3: configurable table columns (Quote + PO) ----
+check("quote_table_columns persisted exactly as posted (order/labels/enabled)",
+      _json.loads(saved2["quote_table_columns"]) == smoke_quote_columns)
+check("po_table_columns persisted exactly as posted (order/labels/enabled)",
+      _json.loads(saved2["po_table_columns"]) == smoke_po_columns)
+
+with db.connect() as conn:
+    item3_ctx = pdf_theme.get_pdf_context(conn)
+check("get_pdf_context resolves quote_columns from the saved JSON (Description forced first, Amount dropped)",
+      [c[0] for c in item3_ctx.quote_columns] == ["description", "brand", "qty", "unit", "unit_price"])
+check("get_pdf_context resolves po_columns from the saved JSON (Brand dropped, reordered)",
+      [c[0] for c in item3_ctx.po_columns] == ["description", "unit_price", "qty", "unit", "line_total"])
+check("get_pdf_context resolved column widths sum to the printable page width",
+      abs(sum(c[2] for c in item3_ctx.quote_columns) - pdf_theme.AVAILABLE_TABLE_WIDTH_MM) < 0.01)
+check("show_bank_on_po is true once toggled on and bank details exist", item3_ctx.show_bank_on_po is True)
+check("ctx.po_terms reflects the saved PO terms", item3_ctx.po_terms == saved_po_terms)
+
+# reload the documents page -- persisted PO terms/column labels/toggle show up
+resp = client.get("/settings/documents")
+docs_html_after = resp.get_data(as_text=True)
+check("reloaded documents page reflects saved PO terms", "Smoke PO term one." in docs_html_after)
+check("reloaded documents page reflects saved column labels", "MAKE" in docs_html_after and "RATE" in docs_html_after)
+docs_csrf = get_csrf(docs_html_after)
+
+# corrupt column JSON is rejected server-side, not silently stored as garbage
+resp = client.post("/settings/documents", data={
+    "csrf_token": docs_csrf,
+    "accent_color_hex": "#123456", "structure_color_hex": "#654321", "pdf_font": "Times",
+    "quote_trailing_block_order": "bank_then_terms", "estimate_disclaimer_text": "x", "default_terms": "",
+    "po_terms": "", "quote_table_columns": "not valid json{{{",
+    "po_table_columns": _json.dumps(smoke_po_columns),
+}, content_type="multipart/form-data", follow_redirects=True)
+check("corrupt column JSON flashes an error", b"Column configuration was corrupted" in resp.data)
+with db.connect() as conn:
+    saved_after_corrupt = settings_repo.get_settings(conn)
+check("corrupt column JSON does not overwrite the previously-saved good config",
+      _json.loads(saved_after_corrupt["quote_table_columns"]) == smoke_quote_columns)
+
+# posting a column list with Description removed is rejected too (defense
+# in depth -- the UI renders its checkbox disabled, but the server must not
+# trust that alone)
+resp = client.get("/settings/documents")
+docs_csrf = get_csrf(resp.get_data(as_text=True))
+no_description = [c for c in smoke_quote_columns if c["key"] != "description"]
+resp = client.post("/settings/documents", data={
+    "csrf_token": docs_csrf,
+    "accent_color_hex": "#123456", "structure_color_hex": "#654321", "pdf_font": "Times",
+    "quote_trailing_block_order": "bank_then_terms", "estimate_disclaimer_text": "x", "default_terms": "",
+    "po_terms": "", "quote_table_columns": _json.dumps(no_description),
+    "po_table_columns": _json.dumps(smoke_po_columns),
+}, content_type="multipart/form-data", follow_redirects=True)
+check("posting a column list with Description removed is rejected", b"Description column can" in resp.data)
+docs_csrf = get_csrf(resp.get_data(as_text=True))
 
 resp = client.get("/settings/logo")
 check("uploaded logo is served back (200)", resp.status_code == 200 and resp.data[:8] == bytes.fromhex("89504e470d0a1a0a"))
@@ -776,6 +1113,32 @@ for doc_type in ("quote", "estimate", "po"):
 resp = client.get("/settings/preview/not-a-real-type")
 check("preview rejects an unknown doc_type (404)", resp.status_code == 404)
 
+# ---- Item 3: the REAL Purchase Order PDF (not just the Settings preview)
+# still renders once PO terms/bank-details/custom columns are all active --
+# uses the actual PO created back in section 4 (po_id).
+resp = client.get(f"/purchases/{po_id}/pdf")
+check("real PO PDF still returns 200 with PO terms/bank/custom columns active", resp.status_code == 200)
+check("real PO PDF is application/pdf", resp.content_type == "application/pdf")
+check("real PO PDF starts with %PDF magic bytes", resp.data[:4] == b"%PDF")
+
+# ---- Item 3: pdf.theme.resolve_columns() defensive fallbacks (unit-level,
+# not just via the HTTP round-trip above) ----
+check("resolve_columns falls back to defaults (enabled only) on corrupt JSON",
+      [c[0] for c in pdf_theme.resolve_columns("not json", pdf_theme.QUOTE_DEFAULT_COLUMNS)] ==
+      [c["key"] for c in pdf_theme.QUOTE_DEFAULT_COLUMNS if c["enabled"]])
+check("resolve_columns falls back to defaults on an empty JSON array",
+      [c[0] for c in pdf_theme.resolve_columns("[]", pdf_theme.PO_DEFAULT_COLUMNS)] ==
+      [c["key"] for c in pdf_theme.PO_DEFAULT_COLUMNS])
+check("resolve_columns forces Description present even if every other column is disabled and Description is missing entirely",
+      pdf_theme.resolve_columns('[{"key":"qty","label":"QTY","enabled":false}]', pdf_theme.QUOTE_DEFAULT_COLUMNS) ==
+      [("description", "DESCRIPTION", pdf_theme.AVAILABLE_TABLE_WIDTH_MM)])
+check("resolve_columns forces Description enabled even if the stored JSON explicitly disabled it",
+      pdf_theme.resolve_columns('[{"key":"description","label":"DESC","enabled":false}]', pdf_theme.QUOTE_DEFAULT_COLUMNS) ==
+      [("description", "DESC", pdf_theme.AVAILABLE_TABLE_WIDTH_MM)])
+resolved_all_po = pdf_theme.resolve_columns(saved2["po_table_columns"], pdf_theme.PO_DEFAULT_COLUMNS)
+check("resolve_columns widths always sum exactly to the printable page width",
+      abs(sum(w for _, _, w in resolved_all_po) - pdf_theme.AVAILABLE_TABLE_WIDTH_MM) < 0.01)
+
 resp = client.post("/settings/documents", data={
     "csrf_token": docs_csrf,
     "logo_file": (io.BytesIO(b"not an image"), "not_an_image.txt"),
@@ -790,6 +1153,883 @@ resp = buyer_client.get("/settings/")
 check("buyer is blocked (403) from Settings (settings.manage required)", resp.status_code == 403)
 resp = buyer_client.post("/settings/", data={"csrf_token": "bad", "company_name": "Hijacked"})
 check("buyer is blocked (403) from saving Settings", resp.status_code == 403)
+
+# ------------------------------------------------------------------ Item 4:
+# PO product search, payment terms/delivery info, DRAFT watermark,
+# signature line, duplicate. Runs after the Settings section above so
+# company_settings.address_line1 ("1 Test Rd") is already saved -- needed to
+# check the ship-to textarea's default prefill.
+resp = client.get("/purchases/products/search", query_string={"q": "Smoke"})
+check("PO product search (by keyword) returns 200", resp.status_code == 200)
+item4_search_results = resp.get_json()
+check("PO product search finds the smoke test product by keyword",
+      any(r["id"] == product_id for r in item4_search_results))
+
+resp = client.get("/purchases/products/search", query_string={"category": "TEST"})
+check("PO product search (by category) finds the active fixture product",
+      any(r["id"] == product_id for r in resp.get_json()))
+
+# new_product (category SMOKE) was soft-deactivated back in section 3 -- a
+# category search for it should now come back empty (active-only filter,
+# same as blueprints/quotes.py: products_search).
+resp = client.get("/purchases/products/search", query_string={"category": "SMOKE"})
+check("PO product search excludes a soft-deactivated product", resp.get_json() == [])
+
+resp = client.get("/purchases/products/search", query_string={"brand": "__NONE__"})
+check("PO product search 'no brand listed' filter returns 200", resp.status_code == 200)
+
+resp = buyer_client.get("/purchases/products/search", query_string={"q": "x"})
+check("PO product search requires purchases.manage (buyer role, which has it, gets 200)", resp.status_code == 200)
+
+# fresh supplier + PO for the order-details/duplicate/watermark checks below
+# -- kept separate from po_id above, which is already fully received.
+r = client.get("/purchases/suppliers/new")
+c = get_csrf(r.get_data(as_text=True))
+client.post("/purchases/suppliers/new",
+             data={"name": "Item4 Smoke Supplier", "address": "1 Item4 Way", "csrf_token": c},
+             follow_redirects=True)
+with db.connect() as conn:
+    item4_supplier = conn.execute("SELECT * FROM suppliers WHERE name = 'Item4 Smoke Supplier'").fetchone()
+
+r = client.get("/purchases/new")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post("/purchases/new",
+                    data={"supplier_id": str(item4_supplier["id"]), "notes": "item4 smoke", "csrf_token": c})
+item4_po_id = int(re.search(r"/purchases/(\d+)", resp.headers["Location"]).group(1))
+
+r = client.get(f"/purchases/{item4_po_id}")
+detail_html = r.get_data(as_text=True)
+c = get_csrf(detail_html)
+check("PO detail 'Add item' panel uses the new search UI (no giant hardcoded <select>)",
+      "poSearchQuery" in detail_html and 'id="product_id"' in detail_html)
+check("PO detail page no longer preloads a 1000-row product <select>",
+      "<select id=\"product_id\"" not in detail_html)
+check("Order details panel present on a draft PO", "Order details" in detail_html)
+check("Ship-to textarea is pre-filled with the company's saved address by default",
+      "1 Test Rd" in detail_html)
+
+client.post(f"/purchases/{item4_po_id}/add-item",
+            data={"product_id": str(product_id), "quantity": "4", "unit_price": "99", "csrf_token": c})
+with db.connect() as conn:
+    item4_items = po_repo.list_po_items(conn, item4_po_id)
+check("item added via the product-search-populated form fields", len(item4_items) == 1)
+
+# order details: round-trip, then clear back out
+resp = client.post(f"/purchases/{item4_po_id}/update-details", data={
+    "payment_terms": "50% advance, balance on delivery",
+    "expected_delivery_date": "2026-09-30",
+    "ship_to_address": "Smoke Site, Building 9",
+    "csrf_token": c,
+}, follow_redirects=True)
+check("update-details round-trip succeeds", resp.status_code == 200)
+with db.connect() as conn:
+    item4_po_with_details = po_repo.get_purchase_order(conn, item4_po_id)
+check("payment_terms persisted", item4_po_with_details["payment_terms"] == "50% advance, balance on delivery")
+check("expected_delivery_date persisted", item4_po_with_details["expected_delivery_date"] == "2026-09-30")
+check("ship_to_address persisted", item4_po_with_details["ship_to_address"] == "Smoke Site, Building 9")
+
+resp = client.get(f"/purchases/{item4_po_id}/pdf")
+pdf_with_details = resp.data
+check("PO PDF with order details set returns 200 and is non-trivial", resp.status_code == 200 and len(pdf_with_details) > 1000)
+
+# clearing the fields back to blank nulls them out (not stored as empty
+# strings) and the rendered PDF actually shrinks -- proves the SHIP TO /
+# PAYMENT TERMS / EXPECTED DELIVERY blocks are omitted, not just blanked.
+client.post(f"/purchases/{item4_po_id}/update-details",
+            data={"payment_terms": "", "expected_delivery_date": "", "ship_to_address": "", "csrf_token": c})
+with db.connect() as conn:
+    item4_po_cleared = po_repo.get_purchase_order(conn, item4_po_id)
+check("clearing the order-details form fields nulls them out (not empty strings)",
+      item4_po_cleared["payment_terms"] is None and item4_po_cleared["expected_delivery_date"] is None
+      and item4_po_cleared["ship_to_address"] is None)
+resp = client.get(f"/purchases/{item4_po_id}/pdf")
+pdf_without_details = resp.data
+check("clearing order details shrinks the rendered PDF (blocks omitted, not blank)",
+      len(pdf_without_details) < len(pdf_with_details))
+
+# re-set payment_terms/ship_to (not expected_delivery_date) so the
+# duplicate check below can actually verify carry-over vs. non-carry-over
+resp = client.post(f"/purchases/{item4_po_id}/update-details", data={
+    "payment_terms": "Net 30", "expected_delivery_date": "2026-10-15",
+    "ship_to_address": "Warehouse 4, Jebel Ali", "csrf_token": c,
+}, follow_redirects=True)
+check("re-saving order details after clearing them still works", resp.status_code == 200)
+
+# --- DRAFT watermark, at the PDF-builder level: identical content, status
+# flipped draft vs sent -- deterministic, and doesn't depend on parsing
+# reportlab's compressed content stream to find the drawn "DRAFT" text. ---
+with db.connect() as conn:
+    item4_ctx = pdf_theme.get_pdf_context(conn)
+    item4_watermark_items = [dict(i) for i in po_repo.list_po_items(conn, item4_po_id)]
+    item4_po_row = dict(po_repo.get_purchase_order(conn, item4_po_id))
+draft_dict = dict(item4_po_row, status="draft")
+sent_dict = dict(item4_po_row, status="sent")
+draft_pdf_bytes = pdf_po.build_purchase_order_pdf(item4_ctx, draft_dict, item4_watermark_items)
+sent_pdf_bytes = pdf_po.build_purchase_order_pdf(item4_ctx, sent_dict, item4_watermark_items)
+check("a draft PO's PDF is larger than the identical content marked sent (DRAFT watermark draws extra content)",
+      len(draft_pdf_bytes) > len(sent_pdf_bytes))
+check("received/partially_received POs also render with no watermark (same size as sent)",
+      len(pdf_po.build_purchase_order_pdf(
+          item4_ctx, dict(item4_po_row, status="received"), item4_watermark_items)) == len(sent_pdf_bytes))
+
+# mark this PO sent via the real HTTP route too, and confirm both panels
+# (still editable) and the PDF still render correctly
+r = client.get(f"/purchases/{item4_po_id}")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/purchases/{item4_po_id}/mark-sent", data={"csrf_token": c}, follow_redirects=True)
+resp = client.get(f"/purchases/{item4_po_id}/pdf")
+check("PDF for the now-sent PO still returns 200", resp.status_code == 200)
+r = client.get(f"/purchases/{item4_po_id}")
+sent_detail_html = r.get_data(as_text=True)
+check("Add item / Order details panels still show for a 'sent' PO (editable while draft or sent)",
+      "Order details" in sent_detail_html and "poSearchQuery" in sent_detail_html)
+
+# a fully-received PO's detail page hides both panels (matches the existing
+# "Add item" gate -- reuses po_id/po from section 4, already fully received)
+r = client.get(f"/purchases/{po_id}")
+received_detail_html = r.get_data(as_text=True)
+check("Order details / Add item panels are hidden once a PO is fully received",
+      "Order details" not in received_detail_html and "poSearchQuery" not in received_detail_html)
+resp = client.post(f"/purchases/{po_id}/update-details",
+                    data={"payment_terms": "should be refused", "csrf_token": c}, follow_redirects=True)
+check("update-details is refused server-side on a fully-received PO",
+      b"already started receiving stock" in resp.data)
+with db.connect() as conn:
+    received_po_unchanged = po_repo.get_purchase_order(conn, po_id)
+check("the refused update-details call did not change the received PO's payment_terms",
+      received_po_unchanged["payment_terms"] is None)
+
+# --- duplicate ---
+r = client.get(f"/purchases/{item4_po_id}")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post(f"/purchases/{item4_po_id}/duplicate", data={"csrf_token": c})
+check("duplicate redirects (302) to a new PO's detail page", resp.status_code == 302)
+dup_po_id = int(re.search(r"/purchases/(\d+)", resp.headers["Location"]).group(1))
+check("duplicate created a different PO id than the source", dup_po_id != item4_po_id)
+with db.connect() as conn:
+    dup_po = po_repo.get_purchase_order(conn, dup_po_id)
+    dup_items = po_repo.list_po_items(conn, dup_po_id)
+    source_items_final = po_repo.list_po_items(conn, item4_po_id)
+check("duplicate is a fresh draft regardless of the source's status", dup_po["status"] == "draft")
+check("duplicate carries over the same supplier", dup_po["supplier_id"] == item4_po_row["supplier_id"])
+check("duplicate carries over payment_terms from the source", dup_po["payment_terms"] == "Net 30")
+check("duplicate carries over ship_to_address from the source", dup_po["ship_to_address"] == "Warehouse 4, Jebel Ali")
+check("duplicate leaves expected_delivery_date blank (a new order needs its own date)",
+      dup_po["expected_delivery_date"] is None)
+check("duplicate copies the source's line items 1:1 by count", len(dup_items) == len(source_items_final) == 1)
+check("duplicate's item is a fresh snapshot row, not a reference to the source's row id",
+      dup_items[0]["id"] != source_items_final[0]["id"])
+check("duplicate's item matches the source's product/qty/price",
+      dup_items[0]["product_id"] == source_items_final[0]["product_id"]
+      and dup_items[0]["quantity"] == source_items_final[0]["quantity"]
+      and dup_items[0]["unit_price"] == source_items_final[0]["unit_price"])
+
+# duplicated PO's own PDF renders fine and (being a fresh draft) carries the watermark again
+resp = client.get(f"/purchases/{dup_po_id}/pdf")
+check("duplicated PO's PDF returns 200", resp.status_code == 200)
+check("duplicated PO's PDF is application/pdf", resp.content_type == "application/pdf")
+
+resp = buyer_client.post(f"/purchases/{item4_po_id}/duplicate", data={"csrf_token": "bad"})
+check("duplicate is CSRF-protected (bad token rejected)", resp.status_code == 400)
+
+# ------------------------------------------- Item 1: import-drawing route
+# See the module docstring's NOTE -- no real `anthropic` package/API key is
+# available in this sandbox, so this section covers request validation,
+# permission/CSRF gating, and the "not configured" fallback via real HTTP
+# round-trips, then exercises the SDK-calling code path itself against a
+# hand-built stub module (below).
+
+r = client.get("/quotes/new")
+drawing_csrf = get_csrf_json(r.get_data(as_text=True))
+
+resp = client.post("/quotes/import-drawing", data={"csrf_token": drawing_csrf},
+                    content_type="multipart/form-data")
+check("import-drawing with no file returns 400", resp.status_code == 400)
+check("import-drawing with no file returns a clean JSON error", "error" in (resp.get_json() or {}))
+
+resp = client.post("/quotes/import-drawing", data={
+    "csrf_token": drawing_csrf,
+    "drawing_file": (io.BytesIO(b"not a real drawing"), "notes.txt"),
+}, content_type="multipart/form-data")
+check("import-drawing rejects a disallowed extension (400)", resp.status_code == 400)
+check("disallowed-extension error message names the allowed types",
+      "png" in (resp.get_json() or {}).get("error", ""))
+
+_oversized = b"\x00" * (15 * 1024 * 1024 + 1)
+resp = client.post("/quotes/import-drawing", data={
+    "csrf_token": drawing_csrf,
+    "drawing_file": (io.BytesIO(_oversized), "big.png"),
+}, content_type="multipart/form-data")
+check("import-drawing rejects an oversized file (400)", resp.status_code == 400)
+check("oversized-file error message mentions the size limit",
+      "large" in (resp.get_json() or {}).get("error", "").lower())
+del _oversized
+
+resp = client.post("/quotes/import-drawing", data={
+    "csrf_token": "bad-token",
+    "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+}, content_type="multipart/form-data")
+check("import-drawing is CSRF-protected (bad token rejected, 400)", resp.status_code == 400)
+
+resp = buyer_client.post("/quotes/import-drawing", data={
+    "csrf_token": "irrelevant",
+    "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+}, content_type="multipart/form-data")
+check("buyer (no quotes.manage) is blocked from import-drawing (403)", resp.status_code == 403)
+
+check("ANTHROPIC_API_KEY is unset in this sandbox (expected -- no key available here)",
+      config.ANTHROPIC_API_KEY in (None, ""))
+resp = client.post("/quotes/import-drawing", data={
+    "csrf_token": drawing_csrf,
+    "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+}, content_type="multipart/form-data")
+check("import-drawing with no API key configured returns a clean 503 (not a crash)", resp.status_code == 503)
+check("not-configured error message is actionable", "configured" in (resp.get_json() or {}).get("error", "").lower())
+
+# ---- drawing import: stubbed Anthropic SDK (see module docstring NOTE) ----
+# Exercises the parts of import_drawing() that only run once a client/API
+# key are present: request construction, successful tool_use parsing, the
+# zero-rooms message, and mapping SDK exceptions to clean JSON errors --
+# all without a real network call or a real installed `anthropic` package.
+import types as _types
+import blueprints.quotes as quotes_bp_module
+
+
+class _FakeAPIError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+class _FakeAuthenticationError(_FakeAPIError):
+    pass
+
+
+class _FakeRateLimitError(_FakeAPIError):
+    pass
+
+
+class _FakeToolUseBlock:
+    def __init__(self, name, input_):
+        self.type = "tool_use"
+        self.name = name
+        self.input = input_
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeMessages:
+    def __init__(self, behavior):
+        self.behavior = behavior  # callable: (**kwargs) -> _FakeResponse, or raises
+
+    def create(self, **kwargs):
+        return self.behavior(**kwargs)
+
+
+class _FakeAnthropicClient:
+    def __init__(self, behavior):
+        self.messages = _FakeMessages(behavior)
+
+
+def _make_fake_anthropic(behavior):
+    fake_client_cls = lambda api_key=None: _FakeAnthropicClient(behavior)  # noqa: E731
+    return _types.SimpleNamespace(
+        Anthropic=fake_client_cls,
+        APIError=_FakeAPIError,
+        AuthenticationError=_FakeAuthenticationError,
+        RateLimitError=_FakeRateLimitError,
+        BadRequestError=_FakeAPIError,
+    )
+
+
+_real_anthropic_module = quotes_bp_module.anthropic
+_real_api_key = config.ANTHROPIC_API_KEY
+config.ANTHROPIC_API_KEY = "sk-ant-fake-key-for-smoke-test"
+
+try:
+    # -- success path: a well-formed tool_use response is parsed into rooms
+    def _success_behavior(**kwargs):
+        check("stubbed call forces the record_rooms tool",
+              kwargs.get("tool_choice") == {"type": "tool", "name": "record_rooms"})
+        check("stubbed call sends the configured drawing model", kwargs.get("model") == config.DRAWING_MODEL)
+        return _FakeResponse([_FakeToolUseBlock("record_rooms", {"rooms": [
+            {"name": "Kitchen", "approx_sqft": 180, "source_note": "12' x 15'"},
+            {"name": "  ", "approx_sqft": None, "source_note": None},  # blank name -- must be dropped
+            {"name": "Room 2", "approx_sqft": "not-a-number", "source_note": "  "},
+        ]})])
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_success_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+    }, content_type="multipart/form-data")
+    check("stubbed successful analysis returns 200", resp.status_code == 200)
+    body = resp.get_json() or {}
+    rooms_out = body.get("rooms") or []
+    check("stubbed analysis returns exactly the 2 well-formed rooms (blank-name room dropped)",
+          len(rooms_out) == 2)
+    check("first room's name/size/note passed through", rooms_out[0] == {
+        "name": "Kitchen", "approx_sqft": 180.0, "source_note": "12' x 15'",
+    })
+    check("a non-numeric approx_sqft is coerced to null rather than crashing",
+          rooms_out[1]["approx_sqft"] is None)
+    check("a blank source_note is normalized to null", rooms_out[1]["source_note"] is None)
+
+    # -- zero-rooms path: still 200, with a helpful message the UI can show
+    def _empty_behavior(**kwargs):
+        return _FakeResponse([_FakeToolUseBlock("record_rooms", {"rooms": []})])
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_empty_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+    }, content_type="multipart/form-data")
+    check("stubbed zero-rooms result still returns 200 (not an error)", resp.status_code == 200)
+    body = resp.get_json() or {}
+    check("zero-rooms result returns an empty list", body.get("rooms") == [])
+    check("zero-rooms result includes a helpful message for the UI", bool(body.get("message")))
+
+    # -- PDF (document content block) path also reaches the SDK call cleanly
+    def _pdf_behavior(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        check("a .pdf upload is sent as a document content block, not an image block",
+              content[0]["type"] == "document" and content[0]["source"]["media_type"] == "application/pdf")
+        return _FakeResponse([_FakeToolUseBlock("record_rooms", {"rooms": [{"name": "Room 1"}]})])
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_pdf_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(b"%PDF-1.4 fake pdf bytes"), "plan.pdf"),
+    }, content_type="multipart/form-data")
+    check("stubbed PDF upload returns 200", resp.status_code == 200)
+
+    # -- SDK exception mapping: auth error -> clean 401 JSON, not a crash
+    def _auth_error_behavior(**kwargs):
+        raise _FakeAuthenticationError("invalid x-api-key")
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_auth_error_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+    }, content_type="multipart/form-data")
+    check("stubbed AuthenticationError maps to a clean 401 JSON error (not a crash)", resp.status_code == 401)
+    check("auth-error response has no raw traceback/HTML leaking through",
+          b"Traceback" not in resp.data and resp.content_type.startswith("application/json"))
+
+    # -- SDK exception mapping: rate limit -> clean 429 JSON
+    def _rate_limit_behavior(**kwargs):
+        raise _FakeRateLimitError("rate limited")
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_rate_limit_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+    }, content_type="multipart/form-data")
+    check("stubbed RateLimitError maps to a clean 429 JSON error", resp.status_code == 429)
+
+    # -- a genuinely unexpected exception still comes back as clean JSON,
+    # never an unhandled 500 crash
+    def _weird_behavior(**kwargs):
+        raise RuntimeError("something totally unexpected")
+
+    quotes_bp_module.anthropic = _make_fake_anthropic(_weird_behavior)
+    resp = client.post("/quotes/import-drawing", data={
+        "csrf_token": drawing_csrf,
+        "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+    }, content_type="multipart/form-data")
+    check("an unexpected non-SDK exception still returns clean JSON, not a raw crash",
+          resp.status_code == 500 and resp.content_type.startswith("application/json")
+          and "error" in (resp.get_json() or {}))
+finally:
+    quotes_bp_module.anthropic = _real_anthropic_module
+    config.ANTHROPIC_API_KEY = _real_api_key
+
+resp = client.post("/quotes/import-drawing", data={
+    "csrf_token": drawing_csrf,
+    "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
+}, content_type="multipart/form-data")
+check("import-drawing returns to the clean 503 once the stub/fake key are restored to their real (unset) state",
+      resp.status_code == 503)
+
+# ============================================================= Item 5:
+# Material Requisitions (multi-vendor pricing portal). Covers: existing
+# suppliers get sequential vendor_codes on migration (checked earlier, see
+# "migration sanity check" additions below); new suppliers get one at
+# create-time; vendor_code is immutable via any path; the Vendor role
+# self-service precondition + quick-create derivation rule
+# (username = re.sub([^a-z0-9], vendor_code.lower()), password = username +
+# "12345"); full multi-vendor flow (invite two vendors, one saves a draft
+# -- visible to staff as "In progress" -- then both submit, staff awards to
+# one, a real PO is created with the right supplier/items/prices, the
+# requisition shows 'awarded'); a vendor is fully sandboxed to their own
+# data and blocked from the rest of the app exactly like the Customer/
+# Engineer portal-only accounts.
+
+with db.connect() as conn:
+    mr_cols = {row["name"] for row in conn.execute("PRAGMA table_info(suppliers)")}
+    mr_tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'material_requisition%'"
+    )}
+check("migration 0008 added suppliers.vendor_code / portal_user_id", {"vendor_code", "portal_user_id"} <= mr_cols)
+check("migration 0008 created all four material_requisition tables",
+      mr_tables == {"material_requisitions", "material_requisition_items",
+                    "material_requisition_vendors", "material_requisition_prices"})
+
+with db.connect() as conn:
+    pre_existing_suppliers = conn.execute("SELECT id, vendor_code FROM suppliers ORDER BY id").fetchall()
+check("every supplier created before Item 5 (sections 4/Item 4) was backfilled with a sequential vendor_code",
+      all(s["vendor_code"] is not None for s in pre_existing_suppliers))
+check("backfilled vendor_codes are unique and sequential by id",
+      [s["vendor_code"] for s in pre_existing_suppliers] ==
+      [f"VEND-{i:04d}" for i in range(1, len(pre_existing_suppliers) + 1)])
+
+# --- new suppliers created via the normal route also get a vendor_code ---
+r = client.get("/purchases/suppliers/new")
+c = get_csrf(r.get_data(as_text=True))
+client.post("/purchases/suppliers/new", data={"name": "MR Vendor Alpha", "csrf_token": c}, follow_redirects=True)
+r = client.get("/purchases/suppliers/new")
+c = get_csrf(r.get_data(as_text=True))
+client.post("/purchases/suppliers/new", data={"name": "MR Vendor Beta", "csrf_token": c}, follow_redirects=True)
+with db.connect() as conn:
+    mr_vendor_a = conn.execute("SELECT * FROM suppliers WHERE name='MR Vendor Alpha'").fetchone()
+    mr_vendor_b = conn.execute("SELECT * FROM suppliers WHERE name='MR Vendor Beta'").fetchone()
+check("newly-created supplier A got a fresh sequential vendor_code",
+      mr_vendor_a["vendor_code"] == f"VEND-{len(pre_existing_suppliers) + 1:04d}")
+check("newly-created supplier B got the next sequential vendor_code",
+      mr_vendor_b["vendor_code"] == f"VEND-{len(pre_existing_suppliers) + 2:04d}")
+
+# --- vendor_code is immutable: a crafted POST field is silently ignored ---
+r = client.get(f"/purchases/suppliers/{mr_vendor_a['id']}/edit")
+supplier_edit_html = r.get_data(as_text=True)
+check("supplier edit page shows the read-only vendor code", mr_vendor_a["vendor_code"] in supplier_edit_html)
+check("supplier edit page has no editable vendor_code input",
+      'name="vendor_code"' not in supplier_edit_html)
+c = get_csrf(supplier_edit_html)
+client.post(f"/purchases/suppliers/{mr_vendor_a['id']}/edit", data={
+    "name": "MR Vendor Alpha Renamed", "vendor_code": "HACKED-0001", "csrf_token": c,
+}, follow_redirects=True)
+with db.connect() as conn:
+    mr_vendor_a_after_edit = conn.execute("SELECT * FROM suppliers WHERE id=?", (mr_vendor_a["id"],)).fetchone()
+check("a crafted vendor_code POST field is silently ignored -- vendor_code unchanged",
+      mr_vendor_a_after_edit["vendor_code"] == mr_vendor_a["vendor_code"])
+check("the legitimate name field in the same request still updates normally",
+      mr_vendor_a_after_edit["name"] == "MR Vendor Alpha Renamed")
+
+# --- vendor accounts: self-service precondition, then quick-create ---
+r = client.get(f"/purchases/suppliers/{mr_vendor_a['id']}/edit")
+pre_role_html = r.get_data(as_text=True)
+check('no Vendor role yet -> quick-create button is not shown, "create a Vendor role" messaging is',
+      "Quick-create vendor login" not in pre_role_html and "Vendor" in pre_role_html and "role" in pre_role_html)
+
+with db.connect() as conn:
+    vendor_role_id = roles_repo.create_role(conn, "Vendor")
+    roles_repo.set_role_permissions(conn, vendor_role_id, {"requisitions.vendor_fill"})
+
+r = client.get(f"/purchases/suppliers/{mr_vendor_a['id']}/edit")
+post_role_html = r.get_data(as_text=True)
+check("once a role holding EXACTLY requisitions.vendor_fill exists, the quick-create button appears",
+      "Quick-create vendor login" in post_role_html)
+c = get_csrf(post_role_html)
+
+resp = client.post(f"/purchases/suppliers/{mr_vendor_a['id']}/quick-create-vendor-login",
+                    data={"csrf_token": c}, follow_redirects=True)
+qc_flash_html = resp.get_data(as_text=True)
+expected_username_a = "mrvendoralpha" if False else __import__("re").sub(
+    r"[^a-z0-9]", "", mr_vendor_a["vendor_code"].lower())
+expected_password_a = expected_username_a + "12345"
+check("quick-create success flash names the generated username",
+      expected_username_a in qc_flash_html)
+check("quick-create success flash names the generated password",
+      expected_password_a in qc_flash_html)
+
+with db.connect() as conn:
+    mr_vendor_a_linked = conn.execute("SELECT * FROM suppliers WHERE id=?", (mr_vendor_a["id"],)).fetchone()
+    mr_vendor_a_user = conn.execute(
+        "SELECT * FROM users WHERE id=?", (mr_vendor_a_linked["portal_user_id"],)
+    ).fetchone()
+check("quick-create linked a new user as this supplier's portal_user_id",
+      mr_vendor_a_linked["portal_user_id"] is not None)
+check("quick-create derived username = vendor_code lowercased, non-alnum stripped",
+      mr_vendor_a_user["username"] == expected_username_a)
+check("quick-create assigned the auto-detected Vendor role",
+      mr_vendor_a_user["role_id"] == vendor_role_id)
+
+# quick-create again is refused (already linked)
+r = client.get(f"/purchases/suppliers/{mr_vendor_a['id']}/edit")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post(f"/purchases/suppliers/{mr_vendor_a['id']}/quick-create-vendor-login",
+                    data={"csrf_token": c}, follow_redirects=True)
+check("quick-create a second time for an already-linked supplier is refused",
+      "already has a linked vendor login" in resp.get_data(as_text=True))
+
+# quick-create for vendor B too, so the multi-vendor flow below has two real logins
+r = client.get(f"/purchases/suppliers/{mr_vendor_b['id']}/edit")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/purchases/suppliers/{mr_vendor_b['id']}/quick-create-vendor-login",
+            data={"csrf_token": c}, follow_redirects=True)
+with db.connect() as conn:
+    mr_vendor_b_linked = conn.execute("SELECT * FROM suppliers WHERE id=?", (mr_vendor_b["id"],)).fetchone()
+    mr_vendor_b_user = conn.execute("SELECT * FROM users WHERE id=?", (mr_vendor_b_linked["portal_user_id"],)).fetchone()
+expected_username_b = __import__("re").sub(r"[^a-z0-9]", "", mr_vendor_b["vendor_code"].lower())
+expected_password_b = expected_username_b + "12345"
+check("vendor B quick-create also derived the correct username", mr_vendor_b_user["username"] == expected_username_b)
+
+# --- auth.py plumbing ---
+check("requisitions.vendor_fill is a portal-only code",
+      auth.is_portal_only_user({"requisitions.vendor_fill"}))
+check("default_landing_endpoint sends a vendor-only account to the Vendor portal",
+      auth.default_landing_endpoint({"requisitions.vendor_fill"}) == "vendor_portal.list_view")
+
+# --- staff creates a requisition, adds items, invites both vendors ---
+r = client.get("/requisitions/")
+check("requisitions list page loads (200)", r.status_code == 200)
+r = client.get("/requisitions/new")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post("/requisitions/new", data={"notes": "Smoke test requisition", "csrf_token": c})
+check("new requisition redirects (302) to its detail page", resp.status_code == 302)
+req_id = int(re.search(r"/requisitions/(\d+)", resp.headers["Location"]).group(1))
+
+with db.connect() as conn:
+    req_row = conn.execute("SELECT * FROM material_requisitions WHERE id=?", (req_id,)).fetchone()
+check("requisition number is well-formed (MR-YYYYMM-NNNN)",
+      re.match(r"^MR-\d{6}-\d{4}$", req_row["requisition_no"]) is not None)
+check("new requisition starts 'open'", req_row["status"] == "open")
+
+r = client.get(f"/requisitions/{req_id}")
+req_detail_html = r.get_data(as_text=True)
+check("requisition products-search endpoint is reachable and returns JSON",
+      client.get("/requisitions/products/search", query_string={"q": "Smoke"}).status_code == 200)
+c = get_csrf(req_detail_html)
+
+mr_items_payload = [
+    {"product_id": product_id, "description": "Smoke Test Widget", "unit": "nos", "quantity": 20},
+    {"product_id": None, "description": "Custom miscellaneous fasteners", "unit": "box", "quantity": 3},
+]
+resp = client.post(f"/requisitions/{req_id}/items",
+                    data={"items_json": _json.dumps(mr_items_payload), "csrf_token": c}, follow_redirects=True)
+check("item list save succeeds", "Item list saved" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_items = conn.execute(
+        "SELECT * FROM material_requisition_items WHERE requisition_id=? ORDER BY position", (req_id,)
+    ).fetchall()
+check("both items persisted, in order", len(mr_items) == 2 and mr_items[0]["description"] == "Smoke Test Widget")
+check("the Product-Master-linked line kept its product_id", mr_items[0]["product_id"] == product_id)
+check("the custom line has no product_id", mr_items[1]["product_id"] is None)
+mr_item1_id, mr_item2_id = mr_items[0]["id"], mr_items[1]["id"]
+
+r = client.get(f"/requisitions/{req_id}")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post(f"/requisitions/{req_id}/invite",
+                    data={"supplier_id": str(mr_vendor_a["id"]), "csrf_token": c}, follow_redirects=True)
+check("vendor A invited", "invited to price this requisition" in resp.get_data(as_text=True))
+r = client.get(f"/requisitions/{req_id}")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/requisitions/{req_id}/invite", data={"supplier_id": str(mr_vendor_b["id"]), "csrf_token": c},
+            follow_redirects=True)
+
+with db.connect() as conn:
+    mr_rvs = conn.execute("SELECT * FROM material_requisition_vendors WHERE requisition_id=?", (req_id,)).fetchall()
+check("both vendors invited (2 requisition-vendor rows)", len(mr_rvs) == 2)
+mr_rv_a = next(v for v in mr_rvs if v["supplier_id"] == mr_vendor_a["id"])
+mr_rv_b = next(v for v in mr_rvs if v["supplier_id"] == mr_vendor_b["id"])
+check("both vendors start 'pending'", mr_rv_a["status"] == "pending" and mr_rv_b["status"] == "pending")
+
+# inviting the same vendor twice is a harmless no-op (UNIQUE constraint,
+# INSERT OR IGNORE)
+r = client.get(f"/requisitions/{req_id}")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/requisitions/{req_id}/invite", data={"supplier_id": str(mr_vendor_a["id"]), "csrf_token": c},
+            follow_redirects=True)
+with db.connect() as conn:
+    mr_rvs_after_dup_invite = conn.execute(
+        "SELECT * FROM material_requisition_vendors WHERE requisition_id=?", (req_id,)
+    ).fetchall()
+check("re-inviting an already-invited vendor doesn't create a duplicate row", len(mr_rvs_after_dup_invite) == 2)
+
+# --- vendor A logs in, sandboxed to their own data ---
+mr_vendor_a_client = app.test_client()
+r = mr_vendor_a_client.get("/auth/login")
+c = get_csrf(r.get_data(as_text=True))
+resp = mr_vendor_a_client.post("/auth/login", data={
+    "username": expected_username_a, "password": expected_password_a, "csrf_token": c,
+}, follow_redirects=True)
+check("vendor A logs in with the generated credentials", b"Material Requests" in resp.data)
+
+resp = mr_vendor_a_client.get("/", follow_redirects=True)
+check("vendor A lands on the Vendor portal at '/', not Product Master",
+      b"Material Requests" in resp.data and b"Product Master" not in resp.data)
+resp = mr_vendor_a_client.get("/vendor-portal/")
+check("vendor A's dashboard lists their own invitation",
+      resp.status_code == 200 and b"Smoke test requisition" in resp.data)
+
+for blocked_path in ("/products/", "/quotes/", "/purchases/", "/tracker/", "/settings/",
+                      "/admin/users", "/requisitions/", "/estimator/"):
+    resp = mr_vendor_a_client.get(blocked_path)
+    check(f"vendor A is blocked (403) from {blocked_path}, same as Customer/Engineer portal-only accounts",
+          resp.status_code == 403)
+
+resp = mr_vendor_a_client.get(f"/vendor-portal/{mr_rv_b['id']}")
+check("vendor A is blocked (403) from vendor B's requisition-vendor detail page", resp.status_code == 403)
+
+resp = mr_vendor_a_client.get(f"/vendor-portal/{mr_rv_a['id']}")
+check("vendor A can view their own requisition-vendor detail page", resp.status_code == 200)
+mr_va_csrf = get_csrf(resp.get_data(as_text=True))
+
+# save a partial draft -- visible to staff as "In progress"
+resp = mr_vendor_a_client.post(f"/vendor-portal/{mr_rv_a['id']}/save-draft", data={
+    f"price_{mr_item1_id}": "15.00", "csrf_token": mr_va_csrf,
+}, follow_redirects=True)
+check("vendor A saves a partial draft", "Draft saved" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_rv_a_after_draft = conn.execute(
+        "SELECT * FROM material_requisition_vendors WHERE id=?", (mr_rv_a["id"],)
+    ).fetchone()
+check("saving a draft does NOT change status away from pending", mr_rv_a_after_draft["status"] == "pending")
+
+r = client.get(f"/requisitions/{req_id}")
+staff_after_draft_html = r.get_data(as_text=True)
+check("staff sees vendor A badged 'In progress' after a partial draft save",
+      "In progress" in staff_after_draft_html)
+
+# submitting with an incomplete price set is rejected
+resp = mr_vendor_a_client.post(f"/vendor-portal/{mr_rv_a['id']}/submit", data={
+    f"price_{mr_item1_id}": "15.00", "csrf_token": mr_va_csrf,
+}, follow_redirects=True)
+check("submitting with a missing line price is rejected",
+      "Enter a price for every line" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_rv_a_after_bad_submit = conn.execute(
+        "SELECT * FROM material_requisition_vendors WHERE id=?", (mr_rv_a["id"],)
+    ).fetchone()
+check("the rejected submit attempt left vendor A pending, not submitted",
+      mr_rv_a_after_bad_submit["status"] == "pending")
+
+# vendor A completes and submits
+resp = mr_vendor_a_client.post(f"/vendor-portal/{mr_rv_a['id']}/submit", data={
+    f"price_{mr_item1_id}": "15.00", f"price_{mr_item2_id}": "80.00",
+    f"note_{mr_item2_id}": "2-week lead time", "csrf_token": mr_va_csrf,
+}, follow_redirects=True)
+check("vendor A's full submit succeeds", "Prices submitted" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_rv_a_submitted = conn.execute("SELECT * FROM material_requisition_vendors WHERE id=?", (mr_rv_a["id"],)).fetchone()
+check("vendor A's status is now 'submitted'", mr_rv_a_submitted["status"] == "submitted")
+check("submitted_at was stamped", mr_rv_a_submitted["submitted_at"] is not None)
+
+# vendor A's page is now locked -- no further edits accepted
+resp = mr_vendor_a_client.get(f"/vendor-portal/{mr_rv_a['id']}")
+check("vendor A's detail page shows the read-only 'submitted, locked' state",
+      "you can no longer edit" in resp.get_data(as_text=True).lower())
+resp = mr_vendor_a_client.post(f"/vendor-portal/{mr_rv_a['id']}/save-draft", data={
+    f"price_{mr_item1_id}": "999.00", "csrf_token": mr_va_csrf,
+}, follow_redirects=True)
+check("editing after submit is rejected server-side, not just hidden in the UI",
+      "already been submitted" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_price_unchanged = conn.execute(
+        "SELECT unit_price FROM material_requisition_prices WHERE requisition_vendor_id=? AND item_id=?",
+        (mr_rv_a["id"], mr_item1_id),
+    ).fetchone()
+check("the blocked post-submit edit did not change the already-submitted price",
+      mr_price_unchanged["unit_price"] == 15.0)
+
+# --- staff comparison grid reflects vendor A's submission; items now locked ---
+r = client.get(f"/requisitions/{req_id}")
+staff_after_a_submit_html = r.get_data(as_text=True)
+check("staff sees vendor A badged 'Submitted'", "Submitted" in staff_after_a_submit_html)
+mr_a_total = 15.00 * 20 + 80.00 * 3
+check(f"staff sees vendor A's total ({mr_a_total:.2f}) in the comparison grid",
+      f"{mr_a_total:.2f}" in staff_after_a_submit_html)
+check("the item list is now locked (a vendor has submitted) even though the requisition is still 'open'",
+      "item list is locked" in staff_after_a_submit_html)
+
+# server-side re-check: replace_items is refused now too, not just hidden
+try:
+    with db.connect_immediate() as conn:
+        requisitions_repo.replace_items(conn, req_id, [
+            {"product_id": None, "description": "Should not be allowed", "unit": "nos", "quantity": 1},
+        ])
+    check("replace_items after a vendor submission should have raised RequisitionLockedError", False)
+except requisitions_repo.RequisitionLockedError:
+    check("repositories.requisitions.replace_items refuses to run once a vendor has submitted", True)
+
+# --- vendor B logs in independently, cannot see vendor A's data, submits too ---
+mr_vendor_b_client = app.test_client()
+r = mr_vendor_b_client.get("/auth/login")
+c = get_csrf(r.get_data(as_text=True))
+mr_vendor_b_client.post("/auth/login", data={
+    "username": expected_username_b, "password": expected_password_b, "csrf_token": c,
+})
+resp = mr_vendor_b_client.get(f"/vendor-portal/{mr_rv_a['id']}")
+check("vendor B is blocked (403) from vendor A's requisition-vendor detail page", resp.status_code == 403)
+
+resp = mr_vendor_b_client.get(f"/vendor-portal/{mr_rv_b['id']}")
+mr_vb_csrf = get_csrf(resp.get_data(as_text=True))
+resp = mr_vendor_b_client.post(f"/vendor-portal/{mr_rv_b['id']}/submit", data={
+    f"price_{mr_item1_id}": "12.50", f"price_{mr_item2_id}": "75.00", "csrf_token": mr_vb_csrf,
+}, follow_redirects=True)
+check("vendor B's full submit succeeds", "Prices submitted" in resp.get_data(as_text=True))
+
+# --- staff awards to vendor B (the cheaper submission) ---
+r = client.get(f"/requisitions/{req_id}")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post(f"/requisitions/{req_id}/award",
+                    data={"requisition_vendor_id": str(mr_rv_b["id"]), "csrf_token": c})
+check("award redirects (302) to the new PO's detail page", resp.status_code == 302)
+mr_po_location = resp.headers.get("Location", "")
+check("award redirects into /purchases/<id>", "/purchases/" in mr_po_location)
+mr_po_id = int(re.search(r"/purchases/(\d+)", mr_po_location).group(1))
+
+with db.connect() as conn:
+    mr_awarded_po = po_repo.get_purchase_order(conn, mr_po_id)
+    mr_awarded_items = po_repo.list_po_items(conn, mr_po_id)
+    mr_req_after_award = conn.execute("SELECT * FROM material_requisitions WHERE id=?", (req_id,)).fetchone()
+check("the real PO's supplier is the awarded vendor (vendor B)", mr_awarded_po["supplier_id"] == mr_vendor_b["id"])
+check("the real PO has one line per requisition item", len(mr_awarded_items) == 2)
+check("PO line prices match vendor B's submitted prices, not vendor A's",
+      {round(i["unit_price"], 2) for i in mr_awarded_items} == {12.50, 75.00})
+check("every PO line has a real (non-null) product_id, satisfying purchase_order_items.product_id NOT NULL",
+      all(i["product_id"] is not None for i in mr_awarded_items))
+check("the Product-Master-linked line's PO row reused the SAME product_id (no duplicate minted)",
+      any(i["product_id"] == product_id for i in mr_awarded_items))
+check("requisition status is now 'awarded'", mr_req_after_award["status"] == "awarded")
+check("requisition awarded_vendor_id records vendor B's requisition-vendor row", mr_req_after_award["awarded_vendor_id"] == mr_rv_b["id"])
+check("requisition resulting_po_id records the new PO", mr_req_after_award["resulting_po_id"] == mr_po_id)
+check("requisition awarded_at was stamped", mr_req_after_award["awarded_at"] is not None)
+
+resp = client.get(f"/purchases/{mr_po_id}/pdf")
+check("the awarded requisition's resulting PO PDF renders (200, real PDF bytes)",
+      resp.status_code == 200 and resp.data[:4] == b"%PDF")
+
+# double-award / award-to-non-submitted-vendor are refused
+resp = client.post(f"/requisitions/{req_id}/award",
+                    data={"requisition_vendor_id": str(mr_rv_a["id"]), "csrf_token": c}, follow_redirects=True)
+check("awarding an already-awarded requisition a second time is refused",
+      "already been awarded" in resp.get_data(as_text=True))
+
+r = client.get("/requisitions/new")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post("/requisitions/new", data={"notes": "second smoke requisition", "csrf_token": c})
+mr_req2_id = int(re.search(r"/requisitions/(\d+)", resp.headers["Location"]).group(1))
+r = client.get(f"/requisitions/{mr_req2_id}")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/requisitions/{mr_req2_id}/items", data={
+    "items_json": _json.dumps([{"product_id": None, "description": "Paint", "unit": "litre", "quantity": 5}]),
+    "csrf_token": c,
+}, follow_redirects=True)
+r = client.get(f"/requisitions/{mr_req2_id}")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/requisitions/{mr_req2_id}/invite", data={"supplier_id": str(mr_vendor_a["id"]), "csrf_token": c},
+            follow_redirects=True)
+with db.connect() as conn:
+    mr_rv2 = conn.execute("SELECT * FROM material_requisition_vendors WHERE requisition_id=?", (mr_req2_id,)).fetchone()
+r = client.get(f"/requisitions/{mr_req2_id}")
+c = get_csrf(r.get_data(as_text=True))
+resp = client.post(f"/requisitions/{mr_req2_id}/award",
+                    data={"requisition_vendor_id": str(mr_rv2["id"]), "csrf_token": c}, follow_redirects=True)
+check("awarding to a still-pending (not submitted) vendor is refused",
+      "submitted their pricing" in resp.get_data(as_text=True))
+with db.connect() as conn:
+    mr_req2_unchanged = conn.execute("SELECT * FROM material_requisitions WHERE id=?", (mr_req2_id,)).fetchone()
+check("the refused award left the second requisition still 'open'", mr_req2_unchanged["status"] == "open")
+
+# --- nav / RBAC regressions ---
+resp = mr_vendor_a_client.get("/vendor-portal/")
+vendor_nav_html = resp.get_data(as_text=True)
+check("vendor's nav shows 'Material Requests', not Quotes/Product Master/Purchases",
+      "Material Requests" in vendor_nav_html and ">Quotes<" not in vendor_nav_html
+      and ">Product Master<" not in vendor_nav_html and ">Purchases<" not in vendor_nav_html)
+
+resp = client.get("/requisitions/")
+staff_nav_html = resp.get_data(as_text=True)
+check("staff (requisitions.manage via Admin) sees 'Material Requisitions' in the nav",
+      "Material Requisitions" in staff_nav_html)
+
+resp = buyer_client.get("/requisitions/")
+check("Buyer role (no requisitions.manage) is blocked (403) from the staff requisitions list", resp.status_code == 403)
+resp = buyer_client.get("/vendor-portal/")
+check("Buyer role hitting the vendor portal (no linked supplier) gets 403, not a crash", resp.status_code == 403)
+
+# ============================================================ Item 7: public site + leads inbox
+
+anon_client = app.test_client()
+
+resp = anon_client.get("/")
+anon_home_html = resp.get_data(as_text=True)
+check("anonymous visitor GET / renders the public homepage (200, no login redirect)",
+      resp.status_code == 200 and "Get a Free Quote" in anon_home_html)
+check("public homepage nav offers a single shared Login button", 'class="pub-login"' in anon_home_html
+      and anon_home_html.count('class="pub-login"') == 1)
+
+for path, marker in [
+    ("/services", "Villa Renovation"),
+    ("/about", "process"),
+    ("/our-work", "Before"),
+    ("/contact", "Tell us about your project"),
+]:
+    resp = anon_client.get(path)
+    check(f"anonymous visitor can reach public page {path} (200)",
+          resp.status_code == 200 and marker.lower() in resp.get_data(as_text=True).lower())
+
+resp = anon_client.get("/static/css/public.css")
+check("public.css is served (200)", resp.status_code == 200)
+
+# a logged-in visitor hitting "/" lands on their own dashboard, not the
+# marketing homepage -- public.home() delegates to
+# auth.default_landing_endpoint the same way the old app.py index() did.
+resp = client.get("/", follow_redirects=True)
+logged_in_root_html = resp.get_data(as_text=True)
+check("a logged-in visitor's GET / redirects to their dashboard, not the marketing page",
+      "Get a Free Quote" not in logged_in_root_html)
+
+# ---- contact form: validation, CSRF, and successful submission land in public_inquiries ----
+r = anon_client.get("/contact")
+contact_csrf = get_csrf(r.get_data(as_text=True))
+
+resp = anon_client.post("/contact", data={"csrf_token": contact_csrf, "name": "", "message": "no name given"})
+check("contact form rejects a missing name (400, stays on the form)",
+      resp.status_code == 400 and "enter your name" in resp.get_data(as_text=True).lower())
+
+resp = anon_client.post("/contact", data={
+    "csrf_token": "not-a-real-token", "name": "Bad Token", "message": "should be rejected",
+})
+check("contact form POST with an invalid CSRF token is rejected (400)", resp.status_code == 400)
+
+resp = anon_client.post("/contact", data={
+    "csrf_token": contact_csrf, "name": "Priya Sharma", "email": "priya@example.com",
+    "phone": "050-000-0000", "message": "Looking for a villa renovation quote.",
+}, follow_redirects=True)
+check("valid contact submission redirects back to /contact with a thank-you flash",
+      resp.status_code == 200 and "thanks" in resp.get_data(as_text=True).lower())
+
+with db.connect() as conn:
+    inquiries = public_repo.list_inquiries(conn)
+check("the contact submission was saved to public_inquiries (not emailed -- Item 6 is on hold)",
+      any(i["name"] == "Priya Sharma" and i["status"] == "new" for i in inquiries))
+priya_inquiry = next(i for i in inquiries if i["name"] == "Priya Sharma")
+
+# ---- staff leads inbox (new leads.view permission) ----
+resp = client.get("/leads/")
+check("Admin (holds leads.view via 'all permissions') can open the leads inbox (200)", resp.status_code == 200)
+check("the submitted inquiry appears in the staff leads inbox", "Priya Sharma" in resp.get_data(as_text=True))
+
+resp = buyer_client.get("/leads/")
+check("Buyer role (no leads.view) is blocked (403) from the leads inbox", resp.status_code == 403)
+
+r = client.get("/leads/")
+c = get_csrf(r.get_data(as_text=True))
+client.post(f"/leads/{priya_inquiry['id']}/mark-read", data={"csrf_token": c}, follow_redirects=True)
+with db.connect() as conn:
+    priya_after = public_repo.get_inquiry(conn, priya_inquiry["id"])
+check("marking a lead read persists status='read'", priya_after["status"] == "read")
+
+# ---- nav regressions ----
+resp = client.get("/products/")
+check("staff (leads.view via Admin) sees 'Website Leads' in the internal nav", "Website Leads" in resp.get_data(as_text=True))
+resp = buyer_client.get("/purchases/")
+check("Buyer role (no leads.view) does NOT see 'Website Leads' in the nav", "Website Leads" not in resp.get_data(as_text=True))
 
 print()
 if failures:

@@ -5,9 +5,24 @@ completion immutability), expenses, weighted progress, and budget.
 Ported from TIMR Project Tracker.html. See
 /root/.claude/plans/iridescent-plotting-umbrella.md for design rationale.
 """
+import os
+import time
+
+from werkzeug.utils import secure_filename
+
+import config
 import repositories.quotes as quotes_repo
 
 ROLES = ["Labor", "Engineer", "Supervisor", "Contractor", "Other"]
+
+# Item 2 -- task completion photos. Same validate/save shape as
+# repositories/settings.py: save_logo(), but a larger size cap (site photos
+# taken on a phone run bigger than a logo) and no "remove old file" logic --
+# a completed task's photo is never replaced, enforced by never calling
+# save_task_photo after a task is already completed (blueprints/tracker.py's
+# complete_task route only ever calls this on a still-pending task).
+ALLOWED_TASK_PHOTO_EXTENSIONS = {"png", "jpg", "jpeg"}
+MAX_TASK_PHOTO_BYTES = 8 * 1024 * 1024  # 8 MB -- phone photos run larger than a logo
 
 
 class TaskNotFoundError(Exception):
@@ -161,18 +176,55 @@ def toggle_task_assignment(conn, task_id, member_id):
         )
 
 
-def complete_task(conn, task_id):
+def complete_task(conn, task_id, photo_filename):
     """Must run inside db.connect_immediate(). Idempotent guard: a second
     completion attempt (double-submit) is rejected rather than overwriting
-    completed_at."""
+    completed_at. `photo_filename` is required (the calling route enforces
+    that a photo was uploaded before this is ever called) and is written in
+    the same UPDATE -- one photo per task, set exactly once."""
     task = _get_task(conn, task_id)
     if task["status"] == "completed":
         raise TaskAlreadyCompletedError("This task has already been marked completed.")
     conn.execute(
         """UPDATE quote_tasks SET status = 'completed', completed_at = datetime('now'),
-                                   updated_at = datetime('now') WHERE id = ?""",
-        (task_id,),
+                                   photo_filename = ?, updated_at = datetime('now') WHERE id = ?""",
+        (photo_filename, task_id),
     )
+
+
+# --------------------------------------------------------------- task photos
+
+def save_task_photo(file_storage):
+    """Validates and saves an uploaded task-completion photo next to the
+    database (config.UPLOADS_DIR -- see save_logo() in
+    repositories/settings.py, the same pattern this mirrors). Returns the
+    new stored filename. Raises ValueError on an invalid file."""
+    if not file_storage or not file_storage.filename:
+        raise ValueError("Attach a photo of the finished work first.")
+
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower() if "." in file_storage.filename else ""
+    if ext not in ALLOWED_TASK_PHOTO_EXTENSIONS:
+        raise ValueError("Task photo must be a .png, .jpg, or .jpeg file.")
+
+    file_storage.seek(0, os.SEEK_END)
+    size = file_storage.tell()
+    file_storage.seek(0)
+    if size > MAX_TASK_PHOTO_BYTES:
+        raise ValueError("Task photo is too large (max 8 MB).")
+
+    os.makedirs(config.UPLOADS_DIR, exist_ok=True)
+    safe_name = secure_filename(file_storage.filename) or "task_photo"
+    stored_name = f"task_{int(time.time())}_{safe_name}"
+    dest_path = os.path.join(config.UPLOADS_DIR, stored_name)
+    file_storage.save(dest_path)
+    return stored_name
+
+
+def task_photo_path(filename):
+    if not filename:
+        return None
+    path = os.path.join(config.UPLOADS_DIR, filename)
+    return path if os.path.exists(path) else None
 
 
 def delete_task(conn, task_id):

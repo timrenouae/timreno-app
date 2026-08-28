@@ -26,12 +26,22 @@
       <a href="{{ url_for('quotes.list_view') }}" class="{{ 'active' if request.blueprint == 'quotes' else '' }}">Quotes</a>
       <a href="{{ url_for('estimator.page_view') }}" class="{{ 'active' if request.blueprint == 'estimator' else '' }}">Rough Estimator</a>
       <a href="{{ url_for('tracker.list_view') }}" class="{{ 'active' if request.blueprint == 'tracker' else '' }}">Project Tracker</a>
+    {% elif 'tracker.complete_tasks' in current_permissions %}
+      <a href="{{ url_for('tracker.list_view') }}" class="{{ 'active' if request.blueprint == 'tracker' else '' }}">My Tasks</a>
+    {% elif 'requisitions.vendor_fill' in current_permissions %}
+      <a href="{{ url_for('vendor_portal.list_view') }}" class="{{ 'active' if request.blueprint == 'vendor_portal' else '' }}">Material Requests</a>
     {% endif %}
     {% if 'products.manage' in current_permissions %}
       <a href="{{ url_for('products.list_view') }}" class="{{ 'active' if request.blueprint == 'products' else '' }}">Product Master</a>
     {% endif %}
     {% if 'purchases.manage' in current_permissions %}
       <a href="{{ url_for('purchases.list_view') }}" class="{{ 'active' if request.blueprint == 'purchases' else '' }}">Purchases</a>
+    {% endif %}
+    {% if 'requisitions.manage' in current_permissions %}
+      <a href="{{ url_for('requisitions.list_view') }}" class="{{ 'active' if request.blueprint == 'requisitions' else '' }}">Material Requisitions</a>
+    {% endif %}
+    {% if 'leads.view' in current_permissions %}
+      <a href="{{ url_for('leads.list_view') }}" class="{{ 'active' if request.blueprint == 'leads' else '' }}">Website Leads</a>
     {% endif %}
     {% if 'users.manage' in current_permissions or 'roles.manage' in current_permissions %}
       <a href="{{ url_for('admin.users_view') }}" class="{{ 'active' if request.blueprint == 'admin' else '' }}">Admin</a>
