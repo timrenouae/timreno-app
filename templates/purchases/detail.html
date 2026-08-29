@@ -9,6 +9,8 @@
   {% elif po.status == 'partially_received' %}<span class="badge badge-accent">Partially received</span>
   {% elif po.status == 'sent' %}<span class="badge badge-structure">Sent</span>
   {% else %}<span class="badge badge-muted">Draft</span>{% endif %}
+  {% if po.delivery_accepted_at %}<span class="badge badge-sage">Vendor accepted delivery — {{ po.delivery_accepted_at }}</span>
+  {% elif po.receiver_name or po.receiver_phone or po.location_url %}<span class="badge badge-muted">Awaiting vendor acknowledgment</span>{% endif %}
 </p>
 
 <div class="panel">
@@ -86,6 +88,22 @@
       <textarea id="ship_to_address" name="ship_to_address" rows="3">{{ po.ship_to_address if po.ship_to_address else default_ship_to }}</textarea>
     </div>
     <div class="field">
+      <label for="receiver_name">Receiver name</label>
+      <input type="text" id="receiver_name" name="receiver_name" value="{{ po.receiver_name or '' }}"
+             placeholder="Who's receiving this on site">
+    </div>
+    <div class="field">
+      <label for="receiver_phone">Receiver mobile number</label>
+      <input type="tel" id="receiver_phone" name="receiver_phone" value="{{ po.receiver_phone or '' }}"
+             placeholder="e.g. 050 123 4567">
+    </div>
+    <div class="field" style="grid-column:1 / -1;">
+      <label for="location_url">Delivery location (map link)</label>
+      <input type="url" id="location_url" name="location_url" value="{{ po.location_url or '' }}"
+             placeholder="Paste a Google Maps link">
+      {% if po.location_url %}<p class="hint" style="margin-top:4px;"><a href="{{ po.location_url }}" target="_blank" rel="noopener">Open current location link →</a></p>{% endif %}
+    </div>
+    <div class="field">
       <button type="submit" class="btn btn-primary">Save order details</button>
     </div>
   </form>
@@ -135,6 +153,14 @@
       <button type="submit" class="btn btn-primary">Add line</button>
     </div>
   </form>
+</div>
+{% elif po.receiver_name or po.receiver_phone or po.location_url %}
+<div class="panel">
+  <h2>Delivery contact</h2>
+  <p class="hint" style="margin-top:-4px;">
+    {{ po.receiver_name or '—' }}{% if po.receiver_phone %} &middot; {{ po.receiver_phone }}{% endif %}
+    {% if po.location_url %}&middot; <a href="{{ po.location_url }}" target="_blank" rel="noopener">Delivery location →</a>{% endif %}
+  </p>
 </div>
 {% endif %}
 

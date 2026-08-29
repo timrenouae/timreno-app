@@ -13,7 +13,9 @@
         <b>{{ r.requisition_no }}</b>
         {% if r.notes %}<div class="hint" style="margin:2px 0 0;">{{ r.notes }}</div>{% endif %}
       </div>
-      {% if r.status == 'submitted' %}<span class="badge badge-sage">Submitted</span>
+      {% if r.requisition_status == 'awarded' and r.awarded_vendor_id == r.id %}<span class="badge badge-sage">You got this order — view delivery details →</span>
+      {% elif r.requisition_status == 'awarded' %}<span class="badge badge-muted">Awarded to another vendor</span>
+      {% elif r.status == 'submitted' %}<span class="badge badge-sage">Submitted</span>
       {% else %}<span class="badge badge-structure">Awaiting your pricing</span>{% endif %}
     </div>
   </a>

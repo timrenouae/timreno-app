@@ -151,8 +151,12 @@ def update_details(po_id):
         payment_terms = (request.form.get("payment_terms") or "").strip() or None
         expected_delivery_date = (request.form.get("expected_delivery_date") or "").strip() or None
         ship_to_address = (request.form.get("ship_to_address") or "").strip() or None
+        receiver_name = (request.form.get("receiver_name") or "").strip() or None
+        receiver_phone = (request.form.get("receiver_phone") or "").strip() or None
+        location_url = (request.form.get("location_url") or "").strip() or None
 
-        po_repo.update_po_details(conn, po_id, payment_terms, expected_delivery_date, ship_to_address)
+        po_repo.update_po_details(conn, po_id, payment_terms, expected_delivery_date, ship_to_address,
+                                   receiver_name, receiver_phone, location_url)
         audit_repo.log(conn, auth.current_user()["id"], "update_details", "purchase_order", po_id)
 
     flash("Order details saved.", "success")
@@ -182,10 +186,11 @@ def duplicate(po_id):
         new_po_id = po_repo.create_purchase_order(
             conn, po["supplier_id"], po["notes"], auth.current_user()["id"], items=new_items,
         )
-        # Payment terms and ship-to usually stay the same for a repeat order
-        # with the same supplier; expected_delivery_date is deliberately
-        # left blank -- a new order needs its own date.
-        po_repo.update_po_details(conn, new_po_id, po["payment_terms"], None, po["ship_to_address"])
+        # Payment terms, ship-to, and the delivery contact usually stay the
+        # same for a repeat order with the same supplier; expected_delivery_date
+        # is deliberately left blank -- a new order needs its own date.
+        po_repo.update_po_details(conn, new_po_id, po["payment_terms"], None, po["ship_to_address"],
+                                   po["receiver_name"], po["receiver_phone"], po["location_url"])
         audit_repo.log(conn, auth.current_user()["id"], "duplicate", "purchase_order", new_po_id,
                         f"duplicated from po_id={po_id}")
 
@@ -268,8 +273,15 @@ def supplier_new():
         )
         audit_repo.log(conn, auth.current_user()["id"], "create", "supplier", new_id, name)
 
-    flash("Supplier added.", "success")
-    return redirect(url_for("purchases.suppliers_view"))
+    # Straight to the edit page, not the supplier list -- that page is the
+    # only place the vendor code and the "Quick-create vendor login" /
+    # link-existing-account panel are shown (they need a real supplier_id
+    # to attach to). Landing here right after creation puts vendor-login
+    # setup directly in front of the person adding the supplier instead of
+    # it being a separate, easy-to-forget step reached only by navigating
+    # back in through Edit later.
+    flash("Supplier added — set up their vendor portal login below if they'll be pricing Material Requisitions.", "success")
+    return redirect(url_for("purchases.supplier_edit", supplier_id=new_id))
 
 
 def _supplier_form_vendor_context(conn):

@@ -20,6 +20,42 @@
 {% endif %}
 
 <div class="panel">
+  <h2>Delivery contact</h2>
+  {% if requisition.status == 'open' %}
+  <form method="post" action="{{ url_for('requisitions.update_receiver_info', requisition_id=requisition.id) }}" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="receiver_name">Receiver name</label>
+      <input type="text" id="receiver_name" name="receiver_name" value="{{ requisition.receiver_name or '' }}"
+             placeholder="Who's receiving this on site">
+    </div>
+    <div class="field">
+      <label for="receiver_phone">Receiver mobile number</label>
+      <input type="tel" id="receiver_phone" name="receiver_phone" value="{{ requisition.receiver_phone or '' }}"
+             placeholder="e.g. 050 123 4567">
+    </div>
+    <div class="field" style="grid-column:1 / -1;">
+      <label for="location_url">Delivery location (map link)</label>
+      <input type="url" id="location_url" name="location_url" value="{{ requisition.location_url or '' }}"
+             placeholder="Paste a Google Maps link">
+    </div>
+    <div class="field">
+      <button type="submit" class="btn btn-secondary">Save delivery details</button>
+    </div>
+  </form>
+  {% else %}
+    {% if requisition.receiver_name or requisition.receiver_phone or requisition.location_url %}
+    <p class="hint" style="margin-top:-4px;">
+      {{ requisition.receiver_name or '—' }}{% if requisition.receiver_phone %} &middot; {{ requisition.receiver_phone }}{% endif %}
+      {% if requisition.location_url %}&middot; <a href="{{ requisition.location_url }}" target="_blank" rel="noopener">Delivery location →</a>{% endif %}
+    </p>
+    {% else %}
+      <div class="empty-state">No delivery contact was set.</div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="panel">
   <h2>Items</h2>
   {% if items_locked %}
     <p class="hint" style="margin-top:-4px;">

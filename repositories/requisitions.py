@@ -57,13 +57,25 @@ def _next_requisition_no(conn):
 
 # -------------------------------------------------------------------- CRUD
 
-def create_requisition(conn, notes, created_by):
+def create_requisition(conn, notes, created_by, receiver_name=None, receiver_phone=None, location_url=None):
     requisition_no = _next_requisition_no(conn)
     cur = conn.execute(
-        "INSERT INTO material_requisitions (requisition_no, notes, status, created_by) VALUES (?, ?, 'open', ?)",
-        (requisition_no, notes, created_by),
+        """INSERT INTO material_requisitions
+           (requisition_no, notes, status, created_by, receiver_name, receiver_phone, location_url)
+           VALUES (?, ?, 'open', ?, ?, ?, ?)""",
+        (requisition_no, notes, created_by, receiver_name, receiver_phone, location_url),
     )
     return cur.lastrowid
+
+
+def update_receiver_info(conn, requisition_id, receiver_name, receiver_phone, location_url):
+    """Editable any time the requisition is still 'open' -- same gate the
+    item list itself uses -- so a typo in the phone number doesn't require
+    recreating the whole requisition. Caller enforces the open-only check."""
+    conn.execute(
+        "UPDATE material_requisitions SET receiver_name = ?, receiver_phone = ?, location_url = ? WHERE id = ?",
+        (receiver_name, receiver_phone, location_url, requisition_id),
+    )
 
 
 def get_requisition(conn, requisition_id):
@@ -84,9 +96,14 @@ def list_requisitions(conn):
 
 def list_requisitions_for_vendor(conn, supplier_id):
     """Every requisition this vendor's linked supplier was invited to, with
-    their own status -- for the Vendor portal dashboard."""
+    their own status -- for the Vendor portal dashboard. Also carries
+    mr.awarded_vendor_id/resulting_po_id so the list itself can show "you
+    got this order" (or "awarded to another vendor") without an extra
+    lookup per row -- there's no email/push here, so this list IS the
+    vendor's notification."""
     return conn.execute(
-        """SELECT mrv.*, mr.requisition_no, mr.status AS requisition_status, mr.notes, mr.created_at
+        """SELECT mrv.*, mr.requisition_no, mr.status AS requisition_status, mr.notes, mr.created_at,
+                  mr.awarded_vendor_id, mr.resulting_po_id
            FROM material_requisition_vendors mrv
            JOIN material_requisitions mr ON mr.id = mrv.requisition_id
            WHERE mrv.supplier_id = ?

@@ -49,14 +49,20 @@ def list_po_items(conn, po_id):
     ).fetchall()
 
 
-def create_purchase_order(conn, supplier_id, notes, created_by, items):
+def create_purchase_order(conn, supplier_id, notes, created_by, items,
+                           receiver_name=None, receiver_phone=None, location_url=None):
     """items: list of dicts with product_id, description, unit, brand,
-    quantity, unit_price (snapshotted at creation time)."""
+    quantity, unit_price (snapshotted at creation time). receiver_name/
+    receiver_phone/location_url are optional -- set automatically when this
+    PO is created by awarding a Material Requisition (carried over from the
+    requisition's own delivery-contact fields), left blank for a PO created
+    the normal way (editable afterward via update_po_details below)."""
     po_number = _next_po_number(conn)
     cur = conn.execute(
-        """INSERT INTO purchase_orders (po_number, supplier_id, status, notes, created_by)
-           VALUES (?, ?, 'draft', ?, ?)""",
-        (po_number, supplier_id, notes, created_by),
+        """INSERT INTO purchase_orders
+           (po_number, supplier_id, status, notes, created_by, receiver_name, receiver_phone, location_url)
+           VALUES (?, ?, 'draft', ?, ?, ?, ?, ?)""",
+        (po_number, supplier_id, notes, created_by, receiver_name, receiver_phone, location_url),
     )
     po_id = cur.lastrowid
     for item in items:
@@ -77,16 +83,35 @@ def create_purchase_order(conn, supplier_id, notes, created_by, items):
     return po_id
 
 
-def update_po_details(conn, po_id, payment_terms, expected_delivery_date, ship_to_address):
+def update_po_details(conn, po_id, payment_terms, expected_delivery_date, ship_to_address,
+                       receiver_name=None, receiver_phone=None, location_url=None):
     """Updates the per-PO (not company-wide) Item 4 fields -- payment terms
     negotiated with this supplier for this order, expected delivery date,
-    and ship-to address. Caller (blueprints/purchases.py) already enforces
-    the draft/sent-only edit gate before calling this; all three values are
-    nullable/optional here too, so clearing a field back to blank is fine."""
+    and ship-to address -- plus the Item 5 follow-up delivery-contact
+    fields (receiver name/phone, location URL). Caller (blueprints/
+    purchases.py) already enforces the draft/sent-only edit gate before
+    calling this; every value here is nullable/optional, so clearing a
+    field back to blank is fine."""
     conn.execute(
-        """UPDATE purchase_orders SET payment_terms = ?, expected_delivery_date = ?, ship_to_address = ?
+        """UPDATE purchase_orders
+           SET payment_terms = ?, expected_delivery_date = ?, ship_to_address = ?,
+               receiver_name = ?, receiver_phone = ?, location_url = ?
            WHERE id = ?""",
-        (payment_terms, expected_delivery_date, ship_to_address, po_id),
+        (payment_terms, expected_delivery_date, ship_to_address,
+         receiver_name, receiver_phone, location_url, po_id),
+    )
+
+
+def accept_delivery(conn, po_id):
+    """The vendor's own one-time acknowledgement -- 'we got this order and
+    will deliver.' Only ever set, never cleared, and only by the linked
+    vendor themselves (blueprints/vendor_portal.py enforces that -- this
+    function has no caller-identity check of its own). Idempotent: a
+    second click after it's already set leaves the original timestamp
+    alone rather than overwriting it."""
+    conn.execute(
+        "UPDATE purchase_orders SET delivery_accepted_at = datetime('now') WHERE id = ? AND delivery_accepted_at IS NULL",
+        (po_id,),
     )
 
 

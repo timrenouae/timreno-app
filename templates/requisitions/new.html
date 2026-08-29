@@ -3,17 +3,92 @@
 {% block content %}
 <p class="eyebrow">Material Requisitions</p>
 <h1>New requisition</h1>
-<p class="sub">Add items and invite vendors on the next page — start with an optional note for whoever's pricing this.</p>
+<p class="sub">Add items, delivery details, and a note for whoever's pricing this — all in one go. Vendors get invited on the next page, once this is saved.</p>
 
-<div class="panel" style="max-width:480px;">
-  <form method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div class="field">
-      <label for="notes">Notes (optional, shown to invited vendors)</label>
-      <textarea id="notes" name="notes" rows="4" placeholder="e.g. Delivery needed within 2 weeks."></textarea>
+<form method="post" action="{{ url_for('requisitions.new_view') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="panel">
+    <h2>Details</h2>
+    <div class="form-grid">
+      <div class="field" style="grid-column:1 / -1;">
+        <label for="notes">Notes (optional, shown to invited vendors)</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="e.g. Delivery needed within 2 weeks."></textarea>
+      </div>
+      <div class="field">
+        <label for="receiver_name">Receiver name</label>
+        <input type="text" id="receiver_name" name="receiver_name" placeholder="Who's receiving this on site">
+      </div>
+      <div class="field">
+        <label for="receiver_phone">Receiver mobile number</label>
+        <input type="tel" id="receiver_phone" name="receiver_phone" placeholder="e.g. 050 123 4567">
+      </div>
+      <div class="field" style="grid-column:1 / -1;">
+        <label for="location_url">Delivery location (map link)</label>
+        <input type="url" id="location_url" name="location_url" placeholder="Paste a Google Maps link">
+      </div>
     </div>
+  </div>
+
+  <div class="panel">
+    <h2>Items</h2>
+    <div class="field">
+      <label for="mrSearchQuery">Search Product Master (multiple keywords match in any order)</label>
+      <input type="text" id="mrSearchQuery" placeholder="e.g. socket schneider">
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="mrCategorySelect">Group</label>
+        <select id="mrCategorySelect">
+          <option value="">All groups</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="mrBrandSelect">Brand</label>
+        <select id="mrBrandSelect">
+          <option value="">All brands</option>
+          <option value="__NONE__">No brand listed</option>
+          {% for b in brands %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div id="mrSearchResults" class="search-results"></div>
+
+    <div class="form-grid" style="align-items:end; margin-top:12px;">
+      <div class="field" style="grid-column:1 / -1;">
+        <label for="mrCustomDesc">Or add a custom item (not in the Product Master)</label>
+        <input type="text" id="mrCustomDesc" placeholder="Description">
+      </div>
+      <div class="field">
+        <label for="mrCustomUnit">Unit</label>
+        <select id="mrCustomUnit">
+          {% for u in units %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="mrCustomQty">Qty</label>
+        <input type="number" step="0.01" min="0.01" id="mrCustomQty" value="1">
+      </div>
+      <div class="field">
+        <button type="button" id="mrCustomAddBtn" class="btn btn-secondary">+ Add custom item</button>
+      </div>
+    </div>
+
+    <h2 style="margin-top:18px;">Item list</h2>
+    <div id="mrItemsBox"></div>
+    <p class="hint" style="margin-top:8px;">Items are optional here — you can also add or change them on the next page while this stays open.</p>
+    <input type="hidden" name="items_json" id="mrItemsJson">
+  </div>
+
+  <div class="panel">
     <button type="submit" class="btn btn-primary">Create requisition</button>
     <a href="{{ url_for('requisitions.list_view') }}" class="btn btn-ghost">Cancel</a>
-  </form>
-</div>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script id="mrInitialData" type="application/json">[]</script>
+<script src="{{ url_for('static', filename='js/requisitions.js') }}"></script>
 {% endblock %}

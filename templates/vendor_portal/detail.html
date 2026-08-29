@@ -9,6 +9,30 @@
   {% if requisition.notes %}&middot; {{ requisition.notes }}{% endif %}
 </p>
 
+{% if won_po %}
+<div class="panel">
+  <h2>You got this order</h2>
+  <p class="hint" style="margin-top:-4px;">Purchase order <b>{{ won_po.po_number }}</b> was created from your submitted pricing.</p>
+  {% if won_po.receiver_name or won_po.receiver_phone or won_po.location_url %}
+  <p style="margin:10px 0 0;">
+    <b>Deliver to:</b> {{ won_po.receiver_name or '—' }}{% if won_po.receiver_phone %} &middot; {{ won_po.receiver_phone }}{% endif %}
+    {% if won_po.location_url %}&middot; <a href="{{ won_po.location_url }}" target="_blank" rel="noopener">Delivery location →</a>{% endif %}
+  </p>
+  {% endif %}
+  {% if won_po.expected_delivery_date %}<p style="margin:6px 0 0;"><b>Expected delivery:</b> {{ won_po.expected_delivery_date }}</p>{% endif %}
+  <div style="margin-top:14px;">
+    {% if won_po.delivery_accepted_at %}
+      <span class="badge badge-sage">You accepted this delivery on {{ won_po.delivery_accepted_at }}</span>
+    {% else %}
+      <form method="post" action="{{ url_for('vendor_portal.accept_delivery', rv_id=rv.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">Accept for delivery</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <div class="panel">
   {% if rv.status == 'submitted' %}
     <h2>Submitted — you can no longer edit</h2>

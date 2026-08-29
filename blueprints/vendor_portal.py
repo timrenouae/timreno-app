@@ -14,6 +14,7 @@ import auth
 import db
 import repositories.requisitions as requisitions_repo
 import repositories.suppliers as suppliers_repo
+import repositories.purchase_orders as po_repo
 import repositories.audit as audit_repo
 
 bp = Blueprint("vendor_portal", __name__, url_prefix="/vendor-portal")
@@ -75,10 +76,45 @@ def detail_view(rv_id):
         requisition = requisitions_repo.get_requisition(conn, rv["requisition_id"])
         items = requisitions_repo.list_items(conn, rv["requisition_id"])
         prices_by_item = {p["item_id"]: dict(p) for p in requisitions_repo.list_prices_for_vendor(conn, rv_id)}
+        # Once this requisition is awarded, and it was awarded to THIS
+        # vendor, load the resulting PO -- this is the vendor's one place to
+        # see "you got the order" plus who/where to deliver to, and to
+        # acknowledge it. There's no email here (Item 6 is on hold), so this
+        # page (reached from the "You got this order" badge on the list) is
+        # the notification.
+        won_po = None
+        if requisition["status"] == "awarded" and requisition["awarded_vendor_id"] == rv["id"]:
+            won_po = po_repo.get_purchase_order(conn, requisition["resulting_po_id"])
     return render_template(
         "vendor_portal/detail.html", rv=rv, requisition=requisition, items=items, prices_by_item=prices_by_item,
-        csrf_token=auth.generate_csrf_token(),
+        won_po=won_po, csrf_token=auth.generate_csrf_token(),
     )
+
+
+@bp.route("/<int:rv_id>/accept-delivery", methods=["POST"])
+@auth.login_required
+def accept_delivery(rv_id):
+    auth.csrf_protect()
+    with db.connect() as conn:
+        rv = requisitions_repo.get_requisition_vendor(conn, rv_id)
+        if rv is None:
+            abort(404)
+        own_supplier_id = _own_supplier_id(conn)
+        # Same "only the actual vendor, never staff on their behalf" rule
+        # as save_draft/submit above.
+        if own_supplier_id is None or own_supplier_id != rv["supplier_id"]:
+            abort(403)
+        requisition = requisitions_repo.get_requisition(conn, rv["requisition_id"])
+        if requisition is None or requisition["status"] != "awarded" or requisition["awarded_vendor_id"] != rv["id"]:
+            flash("This order isn't awarded to you.", "error")
+            return redirect(url_for("vendor_portal.detail_view", rv_id=rv_id))
+
+        po_repo.accept_delivery(conn, requisition["resulting_po_id"])
+        audit_repo.log(conn, auth.current_user()["id"], "accept_delivery", "purchase_order",
+                        requisition["resulting_po_id"])
+
+    flash("Delivery acknowledged — thanks for confirming.", "success")
+    return redirect(url_for("vendor_portal.detail_view", rv_id=rv_id))
 
 
 @bp.route("/<int:rv_id>/save-draft", methods=["POST"])

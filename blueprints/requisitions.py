@@ -28,18 +28,73 @@ def list_view():
     return render_template("requisitions/list.html", rows=rows)
 
 
+def _parse_posted_items(raw_json):
+    """Shared by new_view and save_items -- validates the client-built
+    items_json array (see static/js/requisitions.js) into a clean list of
+    {product_id?, description, unit, quantity}, silently dropping any row
+    missing a description/unit or without a positive quantity. Returns
+    (items, was_malformed) -- was_malformed distinguishes "posted JSON that
+    didn't parse at all" from "posted an empty/all-invalid list", since the
+    two deserve different flash messages."""
+    try:
+        posted = json.loads(raw_json or "[]")
+    except ValueError:
+        return [], True
+
+    items = []
+    for it in posted if isinstance(posted, list) else []:
+        description = (it.get("description") or "").strip()
+        unit = (it.get("unit") or "").strip()
+        try:
+            quantity = float(it.get("quantity"))
+        except (TypeError, ValueError):
+            quantity = 0
+        if not description or not unit or quantity <= 0:
+            continue
+        raw_product_id = it.get("product_id")
+        product_id = int(raw_product_id) if raw_product_id not in (None, "") else None
+        items.append({"product_id": product_id, "description": description, "unit": unit, "quantity": quantity})
+    return items, False
+
+
 @bp.route("/new", methods=["GET", "POST"])
 @auth.require_permission("requisitions.manage")
 def new_view():
+    with db.connect() as conn:
+        categories = products_repo.list_categories(conn)
+        brands = products_repo.list_brands(conn)
+
     if request.method == "GET":
-        return render_template("requisitions/new.html", csrf_token=auth.generate_csrf_token())
+        return render_template(
+            "requisitions/new.html", categories=categories, brands=brands, csrf_token=auth.generate_csrf_token(),
+        )
 
     auth.csrf_protect()
     notes = (request.form.get("notes") or "").strip() or None
-    with db.connect() as conn:
-        requisition_id = requisitions_repo.create_requisition(conn, notes, auth.current_user()["id"])
-        audit_repo.log(conn, auth.current_user()["id"], "create", "material_requisition", requisition_id)
-    flash("Requisition created — add items and invite vendors below.", "success")
+    receiver_name = (request.form.get("receiver_name") or "").strip() or None
+    receiver_phone = (request.form.get("receiver_phone") or "").strip() or None
+    location_url = (request.form.get("location_url") or "").strip() or None
+    # Items are optional at creation -- the search/add panel is right here
+    # on this same page now (no separate "add items" step to miss), but a
+    # requisition with notes/receiver info and no items yet is still valid;
+    # more can be added on the detail page below while it's still open.
+    items, malformed = _parse_posted_items(request.form.get("items_json"))
+    if malformed:
+        flash("Item list was corrupted — try again.", "error")
+        return render_template(
+            "requisitions/new.html", categories=categories, brands=brands, csrf_token=auth.generate_csrf_token(),
+        ), 400
+
+    with db.connect_immediate() as conn:
+        requisition_id = requisitions_repo.create_requisition(
+            conn, notes, auth.current_user()["id"], receiver_name, receiver_phone, location_url,
+        )
+        if items:
+            requisitions_repo.replace_items(conn, requisition_id, items)
+        audit_repo.log(conn, auth.current_user()["id"], "create", "material_requisition", requisition_id,
+                        f"items={len(items)}")
+
+    flash("Requisition created.", "success")
     return redirect(url_for("requisitions.detail_view", requisition_id=requisition_id))
 
 
@@ -90,26 +145,10 @@ def products_search():
 @auth.require_permission("requisitions.manage")
 def save_items(requisition_id):
     auth.csrf_protect()
-    raw = request.form.get("items_json") or "[]"
-    try:
-        posted = json.loads(raw)
-    except ValueError:
+    items, malformed = _parse_posted_items(request.form.get("items_json"))
+    if malformed:
         flash("Item list was corrupted — try again.", "error")
         return redirect(url_for("requisitions.detail_view", requisition_id=requisition_id))
-
-    items = []
-    for it in posted if isinstance(posted, list) else []:
-        description = (it.get("description") or "").strip()
-        unit = (it.get("unit") or "").strip()
-        try:
-            quantity = float(it.get("quantity"))
-        except (TypeError, ValueError):
-            quantity = 0
-        if not description or not unit or quantity <= 0:
-            continue
-        raw_product_id = it.get("product_id")
-        product_id = int(raw_product_id) if raw_product_id not in (None, "") else None
-        items.append({"product_id": product_id, "description": description, "unit": unit, "quantity": quantity})
 
     if not items:
         flash("Add at least one valid item (description, unit, and a positive quantity).", "error")
@@ -127,6 +166,28 @@ def save_items(requisition_id):
         flash(str(e), "error")
     except ValueError as e:
         flash(str(e), "error")
+    return redirect(url_for("requisitions.detail_view", requisition_id=requisition_id))
+
+
+@bp.route("/<int:requisition_id>/receiver-info", methods=["POST"])
+@auth.require_permission("requisitions.manage")
+def update_receiver_info(requisition_id):
+    auth.csrf_protect()
+    with db.connect() as conn:
+        requisition = requisitions_repo.get_requisition(conn, requisition_id)
+        if requisition is None:
+            abort(404)
+        if requisition["status"] != "open":
+            flash("This requisition is no longer open, so its delivery details can't be changed.", "error")
+            return redirect(url_for("requisitions.detail_view", requisition_id=requisition_id))
+
+        receiver_name = (request.form.get("receiver_name") or "").strip() or None
+        receiver_phone = (request.form.get("receiver_phone") or "").strip() or None
+        location_url = (request.form.get("location_url") or "").strip() or None
+        requisitions_repo.update_receiver_info(conn, requisition_id, receiver_name, receiver_phone, location_url)
+        audit_repo.log(conn, auth.current_user()["id"], "update_receiver_info", "material_requisition", requisition_id)
+
+    flash("Delivery details saved.", "success")
     return redirect(url_for("requisitions.detail_view", requisition_id=requisition_id))
 
 
@@ -204,7 +265,11 @@ def award(requisition_id):
             })
 
         notes = f"Awarded from Material Requisition {requisition['requisition_no']}"
-        po_id = po_repo.create_purchase_order(conn, rv["supplier_id"], notes, auth.current_user()["id"], items=po_items)
+        po_id = po_repo.create_purchase_order(
+            conn, rv["supplier_id"], notes, auth.current_user()["id"], items=po_items,
+            receiver_name=requisition["receiver_name"], receiver_phone=requisition["receiver_phone"],
+            location_url=requisition["location_url"],
+        )
         requisitions_repo.award(conn, requisition_id, rv["id"], po_id)
         audit_repo.log(conn, auth.current_user()["id"], "award", "material_requisition", requisition_id,
                         f"vendor_id={rv['id']} po_id={po_id}")
