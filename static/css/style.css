@@ -1,16 +1,24 @@
-/* TIM RENO unified app -- shared design tokens, ported from the existing
-   TIMR Quote Builder / Dashboard / Tracker HTML tools so this app matches
-   the visual system already in use. */
+/* TIM RENO unified app -- shared design tokens.
+
+   Brand palette: Olive & Beige. --accent is an antique-gold/bronze used
+   for primary CTAs and highlights; --structure is a deep olive green used
+   for links, headers, and structural UI; --sage is a brighter leaf-olive
+   reserved for "success" states, kept visually distinct from --structure
+   by lightness/saturation rather than hue; --danger stays a warm
+   terracotta/rust, which was already earthy enough to sit naturally
+   alongside olive and beige. Every other panel/table/badge rule in this
+   file is written against these tokens, so repainting the whole app is a
+   matter of changing the values here. */
 :root{
-  --paper:#eef0ee; --paper-raised:#f8f9f7; --ink:#1b2a38; --ink-soft:#465361;
-  --line:#c9cdc5; --accent:#c1752a; --accent-soft:#e8d3b8; --structure:#2e5c7a;
-  --structure-soft:#dbe6ec; --sage:#5f7d5f; --sage-soft:#dbe6db; --danger:#a8432f; --danger-soft:#f3d9d1;
+  --paper:#f2ecdd; --paper-raised:#faf8f0; --ink:#2b2a1e; --ink-soft:#6e6b52;
+  --line:#ddd3b8; --accent:#8f5f22; --accent-soft:#ecdcb5; --structure:#4a5732;
+  --structure-soft:#e2e6d3; --sage:#4f6e34; --sage-soft:#e4ecd7; --danger:#a8432f; --danger-soft:#f3d9d1;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --paper:#141d26; --paper-raised:#1b2733; --ink:#e9e7df; --ink-soft:#aab4bd;
-    --line:#334454; --accent:#e0973f; --accent-soft:#4a3826; --structure:#7ba7c2;
-    --structure-soft:#213a48; --sage:#8fae8b; --sage-soft:#26362a; --danger:#e0806c; --danger-soft:#4a2a22;
+    --paper:#1c1a12; --paper-raised:#262319; --ink:#ede6d3; --ink-soft:#b8b096;
+    --line:#453f2c; --accent:#d9a94f; --accent-soft:#4a3a1e; --structure:#9fb87a;
+    --structure-soft:#333d22; --sage:#a8c47f; --sage-soft:#2e3a1f; --danger:#e0806c; --danger-soft:#4a2a22;
   }
 }
 *{ box-sizing:border-box; }

@@ -9,12 +9,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
   <style>
+    /* Olive & Beige brand palette (see static/css/style.css for the same
+       system applied to the internal app). --p-accent/--p-structure stay
+       settings-driven so a color changed in Document Builder restyles this
+       site automatically; --p-accent-light is a fixed brighter gold (there's
+       no separate "light" field in Settings) used only where accent text
+       sits directly over a dark photo overlay -- e.g. the hero eyebrow --
+       and needs more punch than the mid-tone brand gold gives it. */
     :root{
-      --p-accent:{{ company_settings.accent_color_hex if company_settings else '#c1752a' }};
-      --p-accent-light:{{ company_settings.accent_color_hex if company_settings else '#e0973f' }};
-      --p-accent-soft:#f3e5d3;
-      --p-structure:{{ company_settings.structure_color_hex if company_settings else '#2e5c7a' }};
-      --p-paper:#f7f7f4; --p-paper-raised:#fdfdfb; --p-ink:#1b2a38; --p-ink-soft:#5a6672; --p-line:#dfe2db;
+      --p-accent:{{ company_settings.accent_color_hex if company_settings else '#8f5f22' }};
+      --p-accent-light:#d9a94f;
+      --p-accent-soft:#ecdcb5;
+      --p-structure:{{ company_settings.structure_color_hex if company_settings else '#4a5732' }};
+      --p-paper:#f2ecdd; --p-paper-raised:#faf8f0; --p-ink:#2b2a1e; --p-ink-soft:#6e6b52; --p-line:#ddd3b8;
     }
   </style>
   {% block extra_head %}{% endblock %}
