@@ -3,7 +3,96 @@
 {% block content %}
 <p class="eyebrow">Rough Estimator</p>
 <h1>Rough Estimate Builder</h1>
-<p class="sub">Pick a room, cabin, or partition type, adjust the fixture counts, and get a fast ballpark price — including an AED/sq ft figure. This is for early conversations with a client, not a final number; use <a href="{{ url_for('quotes.new_view') }}">Quote Builder</a> for the real itemized quote.</p>
+<p class="sub">Two ways to get a ballpark price for a client. <b>Quick Estimate</b> multiplies a total area by a Low/Medium/High per-sq-ft rate — a number in minutes. <b>Detailed Estimate</b> builds it up room by room with fixture counts. Neither is a final number; use <a href="{{ url_for('quotes.new_view') }}">Quote Builder</a> for the real itemized quote.</p>
+
+<div class="seg" id="estimatorModeSeg" style="margin-bottom:20px;">
+  <button type="button" data-mode="quick" class="active">Quick Estimate</button>
+  <button type="button" data-mode="detailed">Detailed Estimate</button>
+</div>
+
+<div id="quickModeBox">
+  <div class="disclaimer"><b>Quick Estimate only.</b> These per-sq-ft rates are blended starting points — open the Quick Estimate Rate Sheet below and set them to match your own numbers before trusting the total.</div>
+
+  <div class="panel">
+    <h2>Job details</h2>
+    <div class="form-grid">
+      <div class="field"><label for="qeClient">Client name</label><input id="qeClient" type="text" placeholder="e.g. Ahmed Al Farsi"></div>
+      <div class="field"><label for="qeProjectName">Project name</label><input id="qeProjectName" type="text" placeholder="e.g. Al Barsha Villa"></div>
+      <div class="field"><label for="qeLocation">Location</label><input id="qeLocation" type="text" placeholder="e.g. Business Bay, Dubai"></div>
+      <div class="field"><label for="qeVat">VAT %</label><input id="qeVat" type="number" min="0" step="0.1" value="{{ company_settings.default_vat_percent }}"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Project type &amp; quality</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label>Project type</label>
+        <div class="seg" id="qeProjectTypeSeg"></div>
+      </div>
+      <div class="field">
+        <label>Quality tier</label>
+        <div class="seg" id="qeTierSeg"></div>
+      </div>
+    </div>
+    <p class="hint" id="qeRateHint" style="margin-top:10px;"></p>
+  </div>
+
+  <div class="panel">
+    <details class="rate-sheet">
+      <summary>Quick Estimate Rate Sheet — AED per sq ft by project type &amp; tier (click to edit)</summary>
+      <p class="hint">Your edits are shared with the whole team and take effect immediately.</p>
+      <div id="qeRateSheetBox"></div>
+      <div class="rate-actions">
+        <button class="btn btn-secondary" id="qeSaveRatesBtn" type="button">Save rates</button>
+        <button class="btn btn-ghost" id="qeResetRatesBtn" type="button">Reset to defaults</button>
+      </div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>Import from Drawing</h2>
+    <p class="hint">Upload a floor plan (architect PDF, photo/scan, or a rough hand sketch) and get a room list with sizes automatically — review and add the ones you want below.</p>
+    <div class="add-space-row">
+      <div class="field" style="flex:1;"><label for="qeDrawingFile">Drawing file</label><input id="qeDrawingFile" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf"></div>
+      <button class="btn btn-secondary" id="qeAnalyzeDrawingBtn" type="button">Analyze Drawing</button>
+    </div>
+    <p class="hint" id="qeDrawingStatus"></p>
+    <div id="qeDrawingReviewBox"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Add a room / space manually</h2>
+    <div class="add-space-row">
+      <div class="field"><label for="qeNewRoomName">Name</label><input id="qeNewRoomName" type="text" placeholder="e.g. Master Bedroom"></div>
+      <div class="field"><label for="qeNewRoomSqft">Size (sq ft)</label><input id="qeNewRoomSqft" type="number" min="0" step="1" placeholder="e.g. 180"></div>
+      <button class="btn btn-primary" id="qeAddRoomBtn" type="button">+ Add room</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Rooms / spaces</h2>
+    <div id="qeRoomsBox"><div class="empty-state">No rooms yet — import a drawing or add one manually above.</div></div>
+  </div>
+
+  <div class="summary panel">
+    <div class="summary-grid">
+      <div class="summary-figures">
+        <div class="fig"><div class="lbl">Total area</div><div class="val" id="qeSumArea">0 sq ft</div></div>
+        <div class="fig"><div class="lbl">Rate</div><div class="val" id="qeSumRate">—</div></div>
+        <div class="fig"><div class="lbl">Subtotal</div><div class="val" id="qeSumSubtotal">AED 0.00</div></div>
+        <div class="fig grand"><div class="lbl">Grand total</div><div class="val" id="qeSumGrand">AED 0.00</div></div>
+      </div>
+      <div class="summary-actions">
+        <button class="btn btn-secondary" id="qePdfBtn" type="button">Download Quick Estimate PDF</button>
+        <button class="btn btn-ghost" id="qeNewEstimateBtn" type="button">New Estimate</button>
+      </div>
+    </div>
+    <p class="hint" id="qeStatus"></p>
+  </div>
+</div>
+
+<div id="detailedModeBox" hidden>
 
 <div class="disclaimer"><b>Rough estimate only.</b> The unit rates below are editable starting points, not researched market prices — open the Rate Sheet and set them to match your actual material + labor costs before trusting the numbers.</div>
 
@@ -74,9 +163,12 @@
   <p class="hint" id="estimatorStatus"></p>
 </div>
 
+</div>
+
 <script id="timrInitialData" type="application/json">{{ initial_data | tojson }}</script>
 {% endblock %}
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/estimator.js') }}"></script>
+<script src="{{ url_for('static', filename='js/estimator_quick.js') }}"></script>
 {% endblock %}

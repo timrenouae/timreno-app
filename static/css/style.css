@@ -126,9 +126,12 @@ tr:last-child td{ border-bottom:none; }
 .disclaimer{ background:var(--accent-soft); border:1px solid var(--accent); border-radius:6px; padding:10px 14px; font-size:0.82rem; color:var(--ink); margin-bottom:18px; }
 .disclaimer b{ color:var(--accent); }
 .finish-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.finish-row .seg{ display:flex; border:1px solid var(--line); border-radius:5px; overflow:hidden; }
-.finish-row .seg button{ border:none; background:var(--paper); color:var(--ink-soft); padding:7px 14px; font-size:0.82rem; font-weight:600; cursor:pointer; }
-.finish-row .seg button.active{ background:var(--structure); color:#fff; }
+/* .seg: a segmented button-group toggle (finish level, Quick/Detailed mode,
+   Quick Estimate project type & quality tier) -- was originally scoped
+   under .finish-row only; generalized so it works standalone too. */
+.seg{ display:inline-flex; border:1px solid var(--line); border-radius:5px; overflow:hidden; }
+.seg button{ border:none; background:var(--paper); color:var(--ink-soft); padding:7px 14px; font-size:0.82rem; font-weight:600; cursor:pointer; }
+.seg button.active{ background:var(--structure); color:#fff; }
 .rate-sheet summary{ cursor:pointer; font-weight:600; font-size:0.92rem; color:var(--structure); margin-bottom:10px; }
 .rate-row{ display:grid; grid-template-columns:1fr 90px 110px; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:0.86rem; }
 .rate-row:last-child{ border-bottom:none; }

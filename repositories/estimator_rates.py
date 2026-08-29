@@ -1,12 +1,26 @@
 """
 SQL access for the Rough Estimator's rate-sheet overrides. RATE_DEFAULTS /
-SPACE_TEMPLATES / FINISH_MULTIPLIERS live in estimator_constants.py (never
-user-editable in the old tool); only overrides are stored here, and stored
-genuinely sparse -- a deliberate small improvement over the old tool, which
-wrote all 23 values as overrides on every save regardless of whether they
-differed from the default.
+SPACE_TEMPLATES / FINISH_MULTIPLIERS / SQFT_RATE_DEFAULTS live in
+estimator_constants.py (never user-editable in the old tool); only
+overrides are stored here, and stored genuinely sparse -- a deliberate
+small improvement over the old tool, which wrote all 23 values as overrides
+on every save regardless of whether they differed from the default.
+
+The same estimator_rate_overrides table (a plain rate_key -> rate sheet)
+backs both the detailed item-by-item mode (RATE_DEFAULTS keys, e.g.
+"socket") and the Quick Estimate per-sqft mode (SQFT_RATE_DEFAULTS keys,
+e.g. "sqft_house_low") -- the key namespaces never collide, so there was no
+reason to stand up a second table for six more rows.
 """
-from estimator_constants import RATE_DEFAULTS, FINISH_MULTIPLIERS
+from estimator_constants import RATE_DEFAULTS, FINISH_MULTIPLIERS, SQFT_RATE_DEFAULTS
+
+
+def _default_rate_for_key(key):
+    if key in RATE_DEFAULTS:
+        return RATE_DEFAULTS[key]["rate"]
+    if key in SQFT_RATE_DEFAULTS:
+        return SQFT_RATE_DEFAULTS[key]["rate"]
+    return None
 
 
 def get_overrides(conn):
@@ -31,14 +45,28 @@ def get_effective_rates(conn, finish_level):
     return result
 
 
+def get_effective_sqft_rates(conn):
+    """Returns {project_type: {tier: {key, label, rate}}} for the Quick
+    Estimate mode -- no finish multiplier here, since each tier (Low/
+    Medium/High) already bakes in its own scope rather than being derived
+    from a single base rate."""
+    overrides = get_overrides(conn)
+    result = {}
+    for key, d in SQFT_RATE_DEFAULTS.items():
+        rate = overrides.get(key, d["rate"])
+        result.setdefault(d["project_type"], {})[d["tier"]] = {"key": key, "label": d["label"], "rate": rate}
+    return result
+
+
 def save_overrides(conn, rate_values: dict, user_id):
     """rate_values: {rate_key: float}. Only upserts a row when the value
-    differs from RATE_DEFAULTS[key]['rate']; deletes any existing override
-    that a save brings back to the default."""
+    differs from that key's default (RATE_DEFAULTS or SQFT_RATE_DEFAULTS,
+    whichever the key belongs to); deletes any existing override that a
+    save brings back to the default. Unknown keys are silently ignored."""
     for key, value in rate_values.items():
-        if key not in RATE_DEFAULTS:
+        default = _default_rate_for_key(key)
+        if default is None:
             continue
-        default = RATE_DEFAULTS[key]["rate"]
         if value == default:
             conn.execute("DELETE FROM estimator_rate_overrides WHERE rate_key = ?", (key,))
         else:
@@ -54,3 +82,15 @@ def save_overrides(conn, rate_values: dict, user_id):
 
 def reset_overrides(conn):
     conn.execute("DELETE FROM estimator_rate_overrides")
+
+
+def reset_sqft_overrides(conn):
+    """Resets only the Quick Estimate per-sqft rates back to their defaults
+    -- kept separate from reset_overrides() so clearing a wrong sqft rate
+    can never accidentally wipe out someone's carefully tuned item-level
+    rate sheet too."""
+    placeholders = ",".join("?" for _ in SQFT_RATE_DEFAULTS)
+    conn.execute(
+        f"DELETE FROM estimator_rate_overrides WHERE rate_key IN ({placeholders})",
+        tuple(SQFT_RATE_DEFAULTS.keys()),
+    )

@@ -306,6 +306,21 @@
       body: fd,
     })
       .then(async (r) => {
+        // A slow drawing (a big multi-page PDF, a busy hand sketch) can run
+        // past the server's own request timeout -- when that happens, the
+        // response is an HTML error page from the server/host infra, not
+        // JSON from this route, and r.json() would throw a cryptic
+        // "Unexpected token '<' ... is not valid JSON" instead of a message
+        // someone can act on. Check the content type first so that case
+        // gets a plain-language explanation instead.
+        const contentType = r.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            r.status === 504 || r.status === 502
+              ? "The drawing took too long to analyze and the request timed out. Try a smaller file, a clearer single-page image, or try again."
+              : `Drawing analysis failed (server error ${r.status}). Try again in a moment.`
+          );
+        }
         const body = await r.json();
         if (!r.ok) throw new Error(body.error || "Drawing analysis failed.");
         return body;

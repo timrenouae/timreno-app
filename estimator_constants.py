@@ -84,6 +84,31 @@ SPACE_TEMPLATES = {
 }
 
 
+# Quick Estimate mode -- a fast "total sq ft x tier rate = rough total"
+# alternative to the detailed item-by-item mode above, for when the ask is
+# a ballpark number in minutes rather than a line-by-line breakdown. Rates
+# are blended per-sqft figures (not a base rate x finish multiplier like
+# RATE_DEFAULTS -- each tier below already bakes in its own scope), split
+# by project type since villa and office renovation price very differently
+# per sqft in the Dubai market. Defaults set from 2026 Dubai market research
+# plus TIM RENO's own confirmed numbers; editable via the same sparse
+# rate_key -> rate override table as RATE_DEFAULTS (see
+# repositories/estimator_rates.py), just with these dedicated keys.
+SQFT_RATE_DEFAULTS = {
+    "sqft_house_low":     {"label": "Low (Basic)",      "project_type": "house",  "project_type_label": "House / Villa", "tier": "Low",    "rate": 180},
+    "sqft_house_medium":  {"label": "Medium (Standard)", "project_type": "house",  "project_type_label": "House / Villa", "tier": "Medium", "rate": 350},
+    "sqft_house_high":    {"label": "High (Premium)",   "project_type": "house",  "project_type_label": "House / Villa", "tier": "High",   "rate": 650},
+    "sqft_office_low":    {"label": "Low (Basic)",      "project_type": "office", "project_type_label": "Office",        "tier": "Low",    "rate": 110},
+    "sqft_office_medium": {"label": "Medium (Standard)", "project_type": "office", "project_type_label": "Office",        "tier": "Medium", "rate": 300},
+    "sqft_office_high":   {"label": "High (Premium)",   "project_type": "office", "project_type_label": "Office",        "tier": "High",   "rate": 600},
+}
+
+# Display order for the Quick Estimate tier picker/table -- SQFT_RATE_DEFAULTS
+# itself is grouped by project type above (a dict literal), not iteration order.
+SQFT_TIERS = ["Low", "Medium", "High"]
+SQFT_PROJECT_TYPES = [("house", "House / Villa"), ("office", "Office")]
+
+
 def resolve_qty(rule, size):
     s = float(size) if size else 0.0
     if rule == "sqft":
