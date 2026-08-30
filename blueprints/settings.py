@@ -166,9 +166,9 @@ def documents_view():
 
             fields = {
                 "accent_color_hex": _clean_hex_color(
-                    request.form.get("accent_color_hex"), settings_row["accent_color_hex"] or "#805f22"),
+                    request.form.get("accent_color_hex"), settings_row["accent_color_hex"] or "#0052cc"),
                 "structure_color_hex": _clean_hex_color(
-                    request.form.get("structure_color_hex"), settings_row["structure_color_hex"] or "#2b2823"),
+                    request.form.get("structure_color_hex"), settings_row["structure_color_hex"] or "#172b4d"),
                 "pdf_font": pdf_font,
                 "show_bank_details_on_quote": 1 if request.form.get("show_bank_details_on_quote") else 0,
                 "show_bank_details_on_estimate": 1 if request.form.get("show_bank_details_on_estimate") else 0,

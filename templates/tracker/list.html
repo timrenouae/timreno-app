@@ -38,7 +38,7 @@
           {% else %}<span class="badge badge-muted">{{ q.stage }}</span>{% endif %}
         </td>
         {% if 'quotes.manage' in current_permissions %}
-        <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">{{ "%.2f"|format(r.totals.grand) }}</td>
+        <td style="font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;">{{ "%.2f"|format(r.totals.grand) }}</td>
         {% endif %}
         <td style="min-width:140px;">
           {% if r.progress %}
@@ -51,7 +51,7 @@
         {% if 'quotes.manage' in current_permissions %}
         <td>
           {% if r.budget %}
-            <span class="{{ 'variance-over' if r.budget.variance < 0 else 'variance-under' }}" style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums; font-size:0.85rem;">
+            <span class="{{ 'variance-over' if r.budget.variance < 0 else 'variance-under' }}" style="font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums; font-size:0.85rem;">
               {{ "%.2f"|format(r.budget.variance) }}
             </span>
           {% else %}

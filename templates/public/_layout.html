@@ -6,24 +6,24 @@
   <title>{% block title %}{{ company_settings.company_name if company_settings else 'TIM RENO' }} — Villa &amp; Office Renovation{% endblock %}</title>
   <meta name="description" content="{{ company_settings.company_tagline if company_settings else 'Villa Construction, Renovations and Office Fit-out' }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
   <style>
-    /* Midnight & Brass brand palette (see static/css/style.css for the same
+    /* Jira-inspired brand palette (see static/css/style.css for the same
        system applied to the internal app). --p-accent/--p-structure stay
        settings-driven so a color changed in Document Builder restyles this
-       site automatically; --p-accent-light is a fixed brighter brass
+       site automatically; --p-accent-light is a fixed brighter blue
        (there's no separate "light" field in Settings) used only where
        accent text sits directly over a dark photo overlay -- e.g. the hero
-       eyebrow -- and needs more punch than the mid-tone brand brass gives
-       it. --p-structure defaults to the same near-black as --p-ink, by
+       eyebrow -- and needs more punch than the mid-tone brand blue gives
+       it. --p-structure defaults to the same dark navy as --p-ink, by
        design -- see style.css's top comment for why. */
     :root{
-      --p-accent:{{ company_settings.accent_color_hex if company_settings else '#805f22' }};
-      --p-accent-light:#cda44f;
-      --p-accent-soft:#ecdfbc;
-      --p-structure:{{ company_settings.structure_color_hex if company_settings else '#2b2823' }};
-      --p-paper:#f7f3ea; --p-paper-raised:#fffdf8; --p-ink:#211f1c; --p-ink-soft:#6b6459; --p-line:#e2dbc9;
+      --p-accent:{{ company_settings.accent_color_hex if company_settings else '#0052cc' }};
+      --p-accent-light:#579dff;
+      --p-accent-soft:#deebff;
+      --p-structure:{{ company_settings.structure_color_hex if company_settings else '#172b4d' }};
+      --p-paper:#f7f8f9; --p-paper-raised:#ffffff; --p-ink:#172b4d; --p-ink-soft:#44546f; --p-line:#dcdfe4;
     }
   </style>
   {% block extra_head %}{% endblock %}

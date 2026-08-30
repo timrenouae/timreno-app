@@ -33,13 +33,13 @@ _FONT_MAP = {
 
 # Neutral tones stay fixed (not owner-editable) -- only the two brand
 # colors (accent/structure) are settings-driven. Matches static/css/
-# style.css's light-mode --ink/--line/--paper-raised tokens (Midnight &
-# Brass -- PDFs are always printed/viewed "light mode", so there's no
+# style.css's light-mode --ink/--line/--paper-raised tokens (Jira-inspired
+# palette -- PDFs are always printed/viewed "light mode", so there's no
 # dark-mode counterpart to carry here).
-INK = colors.HexColor("#211f1c")
-INK_SOFT = colors.HexColor("#6b6459")
-LINE = colors.HexColor("#e2dbc9")
-PAPER_RAISED = colors.HexColor("#fffdf8")
+INK = colors.HexColor("#172b4d")
+INK_SOFT = colors.HexColor("#44546f")
+LINE = colors.HexColor("#dcdfe4")
+PAPER_RAISED = colors.HexColor("#ffffff")
 
 # ---------------------------------------------------------- table columns
 #
@@ -174,8 +174,8 @@ def get_pdf_context(conn):
         trn_number=s["trn_number"],
         logo_path=logo_path,
         ink=INK, ink_soft=INK_SOFT, line=LINE, paper_raised=PAPER_RAISED,
-        accent=colors.HexColor(s["accent_color_hex"] or "#805f22"),
-        structure=colors.HexColor(s["structure_color_hex"] or "#2b2823"),
+        accent=colors.HexColor(s["accent_color_hex"] or "#0052cc"),
+        structure=colors.HexColor(s["structure_color_hex"] or "#172b4d"),
         font=font, font_bold=font_bold,
         bank_lines=bank_lines,
         show_bank_on_quote=bool(s["show_bank_details_on_quote"]) and bool(bank_lines),

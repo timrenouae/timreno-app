@@ -14,7 +14,7 @@
     <tbody>
     {% for i in inquiries %}
       <tr>
-        <td style="white-space:nowrap; font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums; font-size:0.8rem;">{{ i.created_at }}</td>
+        <td style="white-space:nowrap; font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums; font-size:0.8rem;">{{ i.created_at }}</td>
         <td><b>{{ i.name }}</b></td>
         <td>{% if i.email %}<a href="mailto:{{ i.email }}">{{ i.email }}</a>{% else %}<span style="color:var(--ink-soft);">—</span>{% endif %}</td>
         <td>{{ i.phone or '—' }}</td>

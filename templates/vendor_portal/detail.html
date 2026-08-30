@@ -47,7 +47,7 @@
           <td>{{ i.description }}</td>
           <td>{{ i.unit }}</td>
           <td>{{ i.quantity|round(2) }}</td>
-          <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">{{ "%.2f"|format(p.unit_price) if p and p.unit_price is not none else '—' }}</td>
+          <td style="font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums;">{{ "%.2f"|format(p.unit_price) if p and p.unit_price is not none else '—' }}</td>
           <td>{{ p.vendor_notes if p and p.vendor_notes else '—' }}</td>
         </tr>
       {% endfor %}

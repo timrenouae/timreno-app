@@ -1,34 +1,39 @@
 /* TIM RENO unified app -- shared design tokens.
 
-   Brand palette: Midnight & Brass. --ink and --structure are both a warm
-   near-black (Obsidian-family) -- deliberately close in value rather than
-   a third hue, so the system reads as a quiet two-color luxury identity
-   (near-black + brass) instead of three competing colors; --accent is the
-   one warm brass/bronze reserved for CTAs, totals, and emphasis, so it
-   stays meaningful by staying rare. --sage is a muted olive-green kept
-   only for "success" states and --danger a warm oxide red for errors --
-   both desaturated enough not to fight the brass accent. Every other
-   panel/table/badge rule in this file is written against these tokens,
-   so repainting the whole app is a matter of changing the values here.
+   Brand palette: modeled on Jira/Atlassian's current product UI -- a
+   single blue accent (#0052CC, Atlassian's own "Science Blue") against a
+   light neutral canvas, with a dark navy ("Nile Blue" #172B4D) doing
+   double duty as both body text and the --structure token (headings,
+   active-nav emphasis, PDF room bands/totals) -- Jira doesn't really run
+   a third hue for structural elements, just text-navy + one accent blue,
+   so this file follows that same restrained two-color logic. --sage is
+   Atlassian's semantic "success" green and --danger its semantic "error"
+   red, both used only for status/feedback, never as decoration.
 
-   Typography: Libre Baskerville (a classical serif -- see h1/.brand-name/
-   .panel h2 below) for display headings, and Source Sans 3 for body text,
-   labels, and figures. There is no third "mono" face any more -- small
-   tracked-caps labels (.eyebrow, .badge, nav, etc.) use Source Sans 3 at
-   a semibold weight with letter-spacing instead, which suits the
-   restrained/editorial mood better than a technical monospace would;
-   money figures get font-variant-numeric:tabular-nums instead of a mono
-   face so columns still line up. */
+   Typography: Inter for everything -- headings, body, labels, figures --
+   at varying size/weight rather than a second display face, matching how
+   Atlassian's own type scale uses one family throughout. Small
+   tracked-caps labels (.eyebrow, nav, table headers) use a semibold
+   weight with letter-spacing; money figures get
+   font-variant-numeric:tabular-nums so columns still line up without a
+   separate mono face.
+
+   Layout: a fixed left sidebar (icon + label navigation, Jira's own
+   "new navigation" pattern) plus a slim top header for the signed-in
+   user/logout, replacing the old single-row top bar. See .app-shell /
+   .sidebar / .app-topheader below; templates/base.html only emits this
+   shell when a user is signed in -- the login page keeps the plain
+   .wrap-only layout it always has. */
 :root{
-  --paper:#f7f3ea; --paper-raised:#fffdf8; --ink:#211f1c; --ink-soft:#6b6459;
-  --line:#e2dbc9; --accent:#805f22; --accent-soft:#ecdfbc; --structure:#2b2823;
-  --structure-soft:#e3e0d8; --sage:#4f6a41; --sage-soft:#e2e6d8; --danger:#96392a; --danger-soft:#eed7cd;
+  --paper:#f7f8f9; --paper-raised:#ffffff; --ink:#172b4d; --ink-soft:#44546f;
+  --line:#dcdfe4; --accent:#0052cc; --accent-soft:#deebff; --structure:#172b4d;
+  --structure-soft:#f1f2f4; --sage:#216e4e; --sage-soft:#dcfff1; --danger:#ae2a19; --danger-soft:#ffebe6;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --paper:#171512; --paper-raised:#201d18; --ink:#f0ead9; --ink-soft:#a89f8c;
-    --line:#3a352a; --accent:#cda44f; --accent-soft:#4a3c1e; --structure:#e4dcc6;
-    --structure-soft:#2e2a22; --sage:#90a67e; --sage-soft:#2b3324; --danger:#d98868; --danger-soft:#3d2620;
+    --paper:#101214; --paper-raised:#1d2125; --ink:#dee4ea; --ink-soft:#9fadbc;
+    --line:#3b3d42; --accent:#579dff; --accent-soft:#163758; --structure:#dee4ea;
+    --structure-soft:#282e33; --sage:#4bce97; --sage-soft:#164b35; --danger:#f87168; --danger-soft:#5d1f1a;
   }
 }
 *{ box-sizing:border-box; }
@@ -42,46 +47,71 @@
    values in most cases -- this is just the floor every field gets even if
    nothing else styles it. */
 input, select, textarea{
-  color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:4px;
-  padding:7px 9px; font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-size:0.92rem;
+  color:var(--ink); background:var(--paper-raised); border:1px solid var(--line); border-radius:6px;
+  padding:7px 9px; font-family:"Inter", ui-sans-serif, system-ui, sans-serif; font-size:0.92rem;
 }
 body{
   margin:0; background:var(--paper); color:var(--ink);
-  font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif; line-height:1.5;
+  font-family:"Inter", ui-sans-serif, system-ui, sans-serif; line-height:1.5;
 }
-a{ color:var(--structure); }
+a{ color:var(--accent); }
 .wrap{ max-width:1180px; margin:0 auto; padding:24px 28px 60px; }
-.eyebrow{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:var(--structure); margin:0 0 6px; }
-/* A serif headline reads as designed in mixed case, not forced into
-   uppercase the way the old condensed display face was -- title-case
-   template strings ("Rough Estimate Builder") get to read as an actual
-   classical headline instead of dense bold caps. */
-h1{ font-family:"Libre Baskerville", ui-serif, serif; font-weight:700; font-size:clamp(1.7rem,3.6vw,2.5rem); letter-spacing:normal; margin:0 0 6px; }
+.eyebrow{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 6px; }
+h1{ font-family:"Inter", ui-sans-serif, system-ui, sans-serif; font-weight:600; font-size:clamp(1.5rem,3.2vw,2.1rem); letter-spacing:-0.01em; margin:0 0 6px; }
 .sub{ color:var(--ink-soft); font-size:0.95rem; margin:0 0 20px; max-width:70ch; }
 
-.topbar{ display:flex; justify-content:space-between; align-items:center; padding:14px 28px; background:var(--paper-raised); border-bottom:1px solid var(--line); }
-.topbar .brand{ display:flex; align-items:center; gap:8px; min-width:0; max-width:260px; }
-.topbar .brand-logo{ height:26px; width:auto; max-width:80px; object-fit:contain; }
-.topbar .brand-name{ font-family:"Libre Baskerville", ui-serif, serif; font-weight:700; text-transform:uppercase; letter-spacing:0.02em; font-size:1.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.topbar nav{ display:flex; gap:4px; flex-wrap:wrap; }
-.topbar nav a{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); text-decoration:none; padding:6px 10px; border-radius:4px; }
-.topbar nav a.active, .topbar nav a:hover{ background:var(--structure-soft); color:var(--structure); }
-.topbar .who{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-size:11.5px; color:var(--ink-soft); display:flex; align-items:center; gap:10px; }
-.topbar .who a{ color:var(--danger); }
+/* -------------------------------------------------------- app shell/nav */
+.app-shell{ display:flex; min-height:100vh; align-items:stretch; }
+.sidebar{
+  width:252px; flex:none; background:var(--paper-raised); border-right:1px solid var(--line);
+  display:flex; flex-direction:column; padding:14px 10px; position:sticky; top:0; height:100vh; overflow-y:auto;
+}
+.sidebar-brand{ display:flex; align-items:center; gap:9px; padding:6px 8px 18px; min-width:0; }
+.sidebar-brand-logo{ height:24px; width:auto; max-width:56px; object-fit:contain; flex:none; }
+.sidebar-brand-name{
+  font-family:"Inter", ui-sans-serif, sans-serif; font-weight:700; font-size:0.95rem; letter-spacing:-0.01em;
+  color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.sidebar-nav{ display:flex; flex-direction:column; gap:1px; }
+.sidebar-link{
+  display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; text-decoration:none;
+  color:var(--ink-soft); font-family:"Inter", ui-sans-serif, sans-serif; font-weight:500; font-size:0.86rem;
+}
+.sidebar-link:hover{ background:var(--structure-soft); color:var(--ink); }
+.sidebar-link.active{ background:var(--accent-soft); color:var(--accent); font-weight:600; }
+.nav-icon{ display:flex; flex:none; width:20px; height:20px; }
+.nav-icon svg{ width:100%; height:100%; display:block; }
+.nav-label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-.panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:6px; padding:18px 20px; margin-bottom:18px; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.panel h2{ font-family:"Libre Baskerville", ui-serif, serif; font-weight:700; font-size:1.1rem; text-transform:uppercase; letter-spacing:0.02em; margin:0 0 12px; color:var(--ink); }
+.sidebar-scrim{ display:none; }
+.app-main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.app-topheader{
+  display:flex; align-items:center; gap:12px; padding:10px 24px; background:var(--paper-raised);
+  border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20;
+}
+.sidebar-toggle{
+  display:none; background:none; border:none; padding:6px; margin:-6px; cursor:pointer; color:var(--ink-soft); border-radius:6px;
+}
+.sidebar-toggle:hover{ background:var(--structure-soft); }
+.sidebar-toggle svg{ width:22px; height:22px; display:block; }
+.topheader-spacer{ flex:1; }
+.topheader-who{ font-family:"Inter", ui-sans-serif, sans-serif; font-size:0.8rem; color:var(--ink-soft); display:flex; align-items:center; gap:10px; }
+.topheader-who a{ color:var(--danger); font-weight:600; text-decoration:none; }
+.topheader-who a:hover{ text-decoration:underline; }
+
+.panel{ background:var(--paper-raised); border:1px solid var(--line); border-radius:8px; padding:18px 20px; margin-bottom:18px; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.panel h2{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:1.05rem; letter-spacing:-0.005em; margin:0 0 12px; color:var(--ink); }
 
 .field{ display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
-.field label{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-soft); }
+.field label{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-soft); }
 .field input, .field select, .field textarea{
-  font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-size:0.92rem; color:var(--ink);
-  background:var(--paper); border:1px solid var(--line); border-radius:4px; padding:7px 9px;
+  font-family:"Inter", ui-sans-serif, sans-serif; font-size:0.92rem; color:var(--ink);
+  background:var(--paper-raised); border:1px solid var(--line); border-radius:6px; padding:7px 9px;
 }
-.field input:focus, .field select:focus, .field textarea:focus{ outline:2px solid var(--structure); outline-offset:-1px; }
+.field input:focus, .field select:focus, .field textarea:focus{ outline:2px solid var(--accent); outline-offset:-1px; }
 .form-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:0 16px; }
 
-.btn{ font-family:"Source Sans 3", sans-serif; font-weight:600; font-size:0.86rem; border:none; border-radius:4px; padding:9px 16px; cursor:pointer; text-decoration:none; display:inline-block; }
+.btn{ font-family:"Inter", sans-serif; font-weight:600; font-size:0.86rem; border:none; border-radius:6px; padding:9px 16px; cursor:pointer; text-decoration:none; display:inline-block; }
 .btn-primary{ background:var(--accent); color:#fff; }
 .btn-secondary{ background:var(--structure-soft); color:var(--structure); }
 .btn-ghost{ background:transparent; color:var(--ink-soft); border:1px solid var(--line); }
@@ -93,14 +123,15 @@ th{ text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:
 td{ padding:8px 10px; border-bottom:1px solid var(--line); font-size:0.88rem; }
 tr:last-child td{ border-bottom:none; }
 
-.badge{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.03em; text-transform:uppercase; border-radius:3px; padding:2px 8px; display:inline-block; }
+/* Jira-style status "lozenges" -- fully rounded pill badges. */
+.badge{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.02em; text-transform:uppercase; border-radius:999px; padding:3px 10px; display:inline-block; }
 .badge-structure{ background:var(--structure-soft); color:var(--structure); }
 .badge-sage{ background:var(--sage-soft); color:var(--sage); }
 .badge-accent{ background:var(--accent-soft); color:var(--accent); }
 .badge-danger{ background:var(--danger-soft); color:var(--danger); }
 .badge-muted{ background:var(--line); color:var(--ink-soft); }
 
-.flash{ border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:0.88rem; }
+.flash{ border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.88rem; }
 .flash-error{ background:var(--danger-soft); color:var(--danger); }
 .flash-success{ background:var(--sage-soft); color:var(--sage); }
 
@@ -117,111 +148,125 @@ tr:last-child td{ border-bottom:none; }
 /* Builder / Estimator (Quotes, Rough Estimator) */
 .builder-grid{ display:grid; grid-template-columns:360px 1fr; gap:18px; align-items:start; }
 @media (max-width:900px){ .builder-grid{ grid-template-columns:1fr; } }
-.search-results{ max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; background:var(--paper); margin-top:8px; }
+.search-results{ max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); margin-top:8px; }
 .result-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:0.85rem; cursor:pointer; }
 .result-row:last-child{ border-bottom:none; }
 .result-row:hover{ background:var(--structure-soft); }
 .result-row .cat{ display:block; font-size:0.68rem; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.03em; }
-.result-row .brand-tag{ font-size:0.65rem; color:var(--accent); background:var(--accent-soft); border-radius:3px; padding:1px 6px; text-transform:uppercase; white-space:nowrap; }
-.result-row .price{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-size:0.8rem; color:var(--structure); white-space:nowrap; }
-.room-card{ border:1px solid var(--line); border-radius:6px; margin-bottom:14px; overflow:hidden; }
+.result-row .brand-tag{ font-size:0.65rem; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:1px 8px; text-transform:uppercase; white-space:nowrap; }
+.result-row .price{ font-family:"Inter", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-size:0.8rem; color:var(--structure); white-space:nowrap; }
+.room-card{ border:1px solid var(--line); border-radius:8px; margin-bottom:14px; overflow:hidden; }
 .room-card-head{ display:flex; justify-content:space-between; align-items:center; background:var(--structure-soft); padding:8px 12px; }
 .room-card-head b{ color:var(--structure); font-size:0.92rem; }
-.room-card-head .room-subtotal{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-weight:600; font-size:0.85rem; color:var(--structure); }
+.room-card-head .room-subtotal{ font-family:"Inter", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-weight:600; font-size:0.85rem; color:var(--structure); }
 .item-row td.qty-cell, .item-row td.price-cell{ width:80px; }
-.item-row input[type=number]{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-size:0.85rem; }
+.item-row input[type=number]{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); font-size:0.85rem; }
 .remove-link{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.85rem; padding:2px 6px; }
 .term-row{ display:flex; gap:8px; align-items:center; margin-bottom:6px; }
-.term-row input{ flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-size:0.85rem; }
+.term-row input{ flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); font-size:0.85rem; }
 .save-status{ font-size:0.82rem; color:var(--ink-soft); margin-top:8px; }
 .save-status.is-error{ color:var(--danger); }
 .save-status.is-success{ color:var(--sage); }
 .progress-bar-track{ background:var(--line); border-radius:6px; height:10px; overflow:hidden; }
-.progress-bar-fill{ background:var(--structure); height:100%; }
+.progress-bar-fill{ background:var(--accent); height:100%; }
 .progress-bar-fill.is-complete{ background:var(--sage); }
-.chip{ display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; background:var(--structure-soft); color:var(--structure); border-radius:12px; padding:3px 10px; margin:2px 4px 2px 0; }
-.chip-toggle{ cursor:pointer; border:1px solid var(--line); background:var(--paper); border-radius:12px; padding:3px 10px; font-size:0.78rem; margin:2px 4px 2px 0; }
-.chip-toggle.chip-on{ background:var(--structure); color:#fff; border-color:var(--structure); }
+.chip{ display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; background:var(--structure-soft); color:var(--structure); border-radius:999px; padding:3px 10px; margin:2px 4px 2px 0; }
+.chip-toggle{ cursor:pointer; border:1px solid var(--line); background:var(--paper-raised); border-radius:999px; padding:3px 10px; font-size:0.78rem; margin:2px 4px 2px 0; }
+.chip-toggle.chip-on{ background:var(--accent); color:#fff; border-color:var(--accent); }
 .chip-toggle[disabled]{ opacity:0.5; cursor:not-allowed; }
 
 /* Rough Estimator */
-.disclaimer{ background:var(--accent-soft); border:1px solid var(--accent); border-radius:6px; padding:10px 14px; font-size:0.82rem; color:var(--ink); margin-bottom:18px; }
+.disclaimer{ background:var(--accent-soft); border:1px solid var(--accent); border-radius:8px; padding:10px 14px; font-size:0.82rem; color:var(--ink); margin-bottom:18px; }
 .disclaimer b{ color:var(--accent); }
 .finish-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 /* .seg: a segmented button-group toggle (finish level, Quick/Detailed mode,
    Quick Estimate project type & quality tier) -- was originally scoped
    under .finish-row only; generalized so it works standalone too. */
-.seg{ display:inline-flex; border:1px solid var(--line); border-radius:5px; overflow:hidden; }
-.seg button{ border:none; background:var(--paper); color:var(--ink-soft); padding:7px 14px; font-size:0.82rem; font-weight:600; cursor:pointer; }
-.seg button.active{ background:var(--structure); color:#fff; }
+.seg{ display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.seg button{ border:none; background:var(--paper-raised); color:var(--ink-soft); padding:7px 14px; font-size:0.82rem; font-weight:600; cursor:pointer; }
+.seg button.active{ background:var(--accent); color:#fff; }
 .rate-sheet summary{ cursor:pointer; font-weight:600; font-size:0.92rem; color:var(--structure); margin-bottom:10px; }
 .rate-row{ display:grid; grid-template-columns:1fr 90px 110px; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:0.86rem; }
 .rate-row:last-child{ border-bottom:none; }
 .rate-row .runit{ color:var(--ink-soft); font-size:0.76rem; }
-.rate-row input{ padding:6px 8px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-size:0.85rem; }
-.rate-effective{ text-align:right; font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; color:var(--ink-soft); font-size:0.8rem; }
+.rate-row input{ padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); font-size:0.85rem; }
+.rate-effective{ text-align:right; font-family:"Inter", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; color:var(--ink-soft); font-size:0.8rem; }
 .rate-actions{ margin-top:10px; display:flex; gap:8px; }
 .add-space-row{ display:grid; grid-template-columns:1.4fr 1fr 0.7fr auto; gap:8px; align-items:end; }
 @media (max-width:720px){ .add-space-row{ grid-template-columns:1fr 1fr; } }
 .empty-spaces{ text-align:center; padding:30px 10px; color:var(--ink-soft); font-size:0.9rem; }
-.space-card{ border:1px solid var(--line); border-radius:6px; margin-bottom:14px; overflow:hidden; background:var(--paper-raised); }
+.space-card{ border:1px solid var(--line); border-radius:8px; margin-bottom:14px; overflow:hidden; background:var(--paper-raised); }
 .space-head{ background:var(--structure-soft); padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.space-head .stype{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--structure); }
-.space-head .sname{ font-family:"Libre Baskerville", serif; font-weight:700; font-size:1.1rem; margin-right:auto; }
+.space-head .stype{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10.5px; letter-spacing:0.04em; text-transform:uppercase; color:var(--structure); }
+.space-head .sname{ font-family:"Inter", sans-serif; font-weight:600; font-size:1.05rem; margin-right:auto; }
 .space-head .ssize{ font-size:0.8rem; color:var(--ink-soft); }
 .space-body{ padding:12px 14px; }
 table.items{ width:100%; border-collapse:collapse; font-size:0.84rem; margin-bottom:8px; }
 table.items th{ text-align:left; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-soft); padding:5px 6px; border-bottom:2px solid var(--line); }
 table.items td{ padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
-table.items input{ padding:5px 6px; font-size:0.82rem; border:1px solid var(--line); border-radius:4px; background:var(--paper); width:100%; }
-table.items td.amt{ text-align:right; font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.items input{ padding:5px 6px; font-size:0.82rem; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); width:100%; }
+table.items td.amt{ text-align:right; font-family:"Inter", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .col-desc{ width:34%; } .col-qty{ width:9%; } .col-unit{ width:10%; } .col-rate{ width:14%; } .col-amt{ width:14%; } .col-del{ width:5%; }
 .custom-item-row{ display:grid; grid-template-columns:2fr 0.8fr 0.8fr 1fr auto; gap:6px; align-items:end; margin-top:6px; }
 @media (max-width:720px){ .custom-item-row{ grid-template-columns:1fr 1fr; } }
-.custom-item-row input{ padding:6px 8px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-size:0.85rem; width:100%; }
+.custom-item-row input{ padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); font-size:0.85rem; width:100%; }
 .mini-label{ font-size:0.68rem; color:var(--ink-soft); text-transform:uppercase; margin-bottom:2px; }
 .space-note{ margin-top:8px; }
-.space-note input{ padding:6px 8px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-size:0.85rem; width:100%; }
+.space-note input{ padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper-raised); font-size:0.85rem; width:100%; }
 .space-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); flex-wrap:wrap; gap:10px; }
-.space-total{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-size:0.95rem; }
+.space-total{ font-family:"Inter", ui-sans-serif, sans-serif; font-variant-numeric:tabular-nums; font-size:0.95rem; }
 .space-total b{ color:var(--structure); font-size:1.05rem; }
 .space-persqft{ color:var(--ink-soft); font-size:0.78rem; }
 .space-actions{ display:flex; gap:6px; flex-wrap:wrap; }
-.summary{ position:sticky; bottom:0; box-shadow:0 -4px 14px rgba(0,0,0,0.06); }
+.summary{ position:sticky; bottom:0; box-shadow:0 -4px 14px rgba(23,43,77,0.08); }
 .summary-grid{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:14px; }
 .summary-figures{ display:flex; gap:26px; flex-wrap:wrap; }
-.summary-figures .fig .lbl{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-soft); }
-.summary-figures .fig .val{ font-family:"Libre Baskerville", serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.3rem; }
+.summary-figures .fig .lbl{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-soft); }
+.summary-figures .fig .val{ font-family:"Inter", sans-serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.3rem; }
 .summary-figures .fig.grand .val{ color:var(--structure); }
 .summary-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
 /* Project Tracker */
 .tracker-stats{ display:flex; gap:20px; flex-wrap:wrap; margin-bottom:18px; }
-.tracker-stats .stat{ background:var(--paper-raised); border:1px solid var(--line); border-radius:6px; padding:10px 16px; min-width:110px; }
-.tracker-stats .stat .lbl{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-soft); }
-.tracker-stats .stat .val{ font-family:"Libre Baskerville", serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.3rem; }
-.task-group-heading{ font-family:"Libre Baskerville", serif; font-weight:700; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.02em; color:var(--structure); margin:16px 0 6px; }
+.tracker-stats .stat{ background:var(--paper-raised); border:1px solid var(--line); border-radius:8px; padding:10px 16px; min-width:110px; }
+.tracker-stats .stat .lbl{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-soft); }
+.tracker-stats .stat .val{ font-family:"Inter", sans-serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.3rem; }
+.task-group-heading{ font-family:"Inter", sans-serif; font-weight:600; font-size:0.9rem; letter-spacing:-0.005em; color:var(--structure); margin:16px 0 6px; }
 .task-row.is-completed{ opacity:0.72; }
 .task-row .task-desc.is-completed{ text-decoration:line-through; }
-.task-photo-thumb{ height:64px; width:64px; object-fit:cover; border-radius:6px; border:1px solid var(--line); cursor:pointer; vertical-align:middle; }
+.task-photo-thumb{ height:64px; width:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:pointer; vertical-align:middle; }
 .budget-box{ display:flex; gap:24px; flex-wrap:wrap; }
-.budget-box .fig .lbl{ font-family:"Source Sans 3", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-soft); }
-.budget-box .fig .val{ font-family:"Libre Baskerville", serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.2rem; }
+.budget-box .fig .lbl{ font-family:"Inter", ui-sans-serif, sans-serif; font-weight:600; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-soft); }
+.budget-box .fig .val{ font-family:"Inter", sans-serif; font-weight:700; font-variant-numeric:tabular-nums; font-size:1.2rem; }
 .budget-box .fig.over .val{ color:var(--danger); }
 .budget-box .fig.under .val{ color:var(--sage); }
 
+/* Sidebar collapses to an off-canvas drawer below this width -- the
+   hamburger in .app-topheader toggles it (see base.html's inline script). */
+@media (max-width:880px){
+  .sidebar-toggle{ display:inline-flex; align-items:center; justify-content:center; }
+  .sidebar{
+    position:fixed; top:0; left:0; z-index:40; transform:translateX(-100%);
+    transition:transform 0.2s ease; box-shadow:2px 0 16px rgba(23,43,77,0.18);
+  }
+  .sidebar.is-open{ transform:translateX(0); }
+  .sidebar-scrim{
+    display:block; position:fixed; inset:0; background:rgba(9,17,31,0.4); opacity:0;
+    pointer-events:none; transition:opacity 0.2s ease; z-index:30;
+  }
+  .sidebar-scrim.is-visible{ opacity:1; pointer-events:auto; }
+}
+
 /* Mobile: the desktop layout above assumes plenty of horizontal room
-   (28px side padding, a single-row topbar, 3-column rate rows, etc.) --
-   these overrides tighten spacing and let wide tables/rows scroll or
-   stack instead of squeezing/overlapping on a phone screen. */
+   (28px side padding, 3-column rate rows, etc.) -- these overrides
+   tighten spacing and let wide tables/rows scroll or stack instead of
+   squeezing/overlapping on a phone screen. */
 @media (max-width:640px){
   .wrap{ padding:14px 12px 40px; }
-  .topbar{ padding:10px 14px; flex-wrap:wrap; row-gap:8px; }
-  .topbar .brand{ font-size:1rem; }
-  .topbar nav{ order:3; width:100%; gap:2px; }
-  .topbar nav a{ padding:6px 8px; font-size:11px; }
-  .topbar .who{ flex-wrap:wrap; font-size:10.5px; gap:6px 10px; }
-  h1{ font-size:1.5rem; }
+  .app-topheader{ padding:10px 14px; }
+  .topheader-who{ flex-wrap:wrap; font-size:10.5px; gap:6px 10px; }
+  .topheader-who span{ display:none; }
+  h1{ font-size:1.4rem; }
   .panel{ padding:14px 14px; }
   .rate-row{ grid-template-columns:1fr; row-gap:2px; padding:8px 0; }
   .rate-effective{ text-align:left; }
