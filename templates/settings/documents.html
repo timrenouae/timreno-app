@@ -41,12 +41,21 @@
     <div class="form-grid">
       <div class="field">
         <label for="accent_color_hex">Accent color</label>
-        <input type="color" id="accent_color_hex" name="accent_color_hex" value="{{ settings.accent_color_hex }}" style="height:38px;">
+        <div class="color-field-row">
+          <input type="color" id="accent_color_hex" name="accent_color_hex" value="{{ settings.accent_color_hex }}" style="height:38px;">
+          <input type="text" id="accent_color_hex_text" class="color-field-hex" value="{{ settings.accent_color_hex }}"
+                 maxlength="7" placeholder="#805f22" autocomplete="off" spellcheck="false" aria-label="Accent color hex code">
+        </div>
+        <p class="hint">Type or paste a hex code directly (e.g. #805f22), or click the swatch to pick visually — both stay in sync.</p>
       </div>
       <div class="field">
         <label for="structure_color_hex">Structure color</label>
-        <input type="color" id="structure_color_hex" name="structure_color_hex" value="{{ settings.structure_color_hex }}" style="height:38px;">
-        <p class="hint">Used for headings, room/space bands, and totals on every PDF.</p>
+        <div class="color-field-row">
+          <input type="color" id="structure_color_hex" name="structure_color_hex" value="{{ settings.structure_color_hex }}" style="height:38px;">
+          <input type="text" id="structure_color_hex_text" class="color-field-hex" value="{{ settings.structure_color_hex }}"
+                 maxlength="7" placeholder="#2b2823" autocomplete="off" spellcheck="false" aria-label="Structure color hex code">
+        </div>
+        <p class="hint">Used for headings, room/space bands, and totals on every PDF. Type/paste a hex code or use the swatch — both stay in sync.</p>
       </div>
       <div class="field">
         <label for="pdf_font">PDF font</label>
@@ -121,6 +130,13 @@
 </div>
 
 <style>
+  .color-field-row{ display:flex; align-items:center; gap:8px; }
+  .color-field-row input[type=color]{ height:38px; width:52px; flex:none; padding:2px; }
+  .color-field-hex{
+    flex:1; min-width:0; padding:8px 10px; font-family:ui-monospace, "SFMono-Regular", Consolas, monospace;
+    text-transform:lowercase;
+  }
+  .color-field-hex.is-invalid{ border-color:var(--danger); color:var(--danger); }
   .col-editor{ border:1px solid var(--line); border-radius:6px; overflow:hidden; margin-bottom:16px; background:var(--paper-raised); }
   .col-editor-row{ display:flex; align-items:center; gap:10px; padding:7px 10px; border-bottom:1px solid var(--line); }
   .col-editor-row:last-child{ border-bottom:none; }
@@ -135,6 +151,57 @@
 </style>
 
 <script>
+(function () {
+  // Keeps a native <input type=color> swatch and a plain text hex field in
+  // sync both ways, so a color can be picked visually OR typed/pasted
+  // directly -- some browsers' native color-picker popup makes typing a
+  // hex code awkward, so the text field is the reliable path for that.
+  function wireColorHexField(colorId, textId) {
+    var colorInput = document.getElementById(colorId);
+    var textInput = document.getElementById(textId);
+    if (!colorInput || !textInput) return;
+    var hexRe = /^#?[0-9a-fA-F]{6}$/;
+
+    function normalize(v) {
+      v = v.trim();
+      return v.charAt(0) === "#" ? v : "#" + v;
+    }
+
+    colorInput.addEventListener("input", function () {
+      textInput.value = colorInput.value;
+      textInput.classList.remove("is-invalid");
+    });
+
+    textInput.addEventListener("input", function () {
+      var v = textInput.value.trim();
+      if (hexRe.test(v)) {
+        colorInput.value = normalize(v);
+        textInput.classList.remove("is-invalid");
+      } else if (v.length > 0) {
+        textInput.classList.add("is-invalid");
+      } else {
+        textInput.classList.remove("is-invalid");
+      }
+    });
+
+    textInput.addEventListener("blur", function () {
+      var v = textInput.value.trim();
+      if (hexRe.test(v)) {
+        textInput.value = normalize(v);
+        colorInput.value = normalize(v);
+      } else {
+        // Not a valid hex code -- snap back to the swatch's last good value
+        // rather than leaving a broken-looking field.
+        textInput.value = colorInput.value;
+      }
+      textInput.classList.remove("is-invalid");
+    });
+  }
+
+  wireColorHexField("accent_color_hex", "accent_color_hex_text");
+  wireColorHexField("structure_color_hex", "structure_color_hex_text");
+})();
+
 (function () {
   function initColumnEditor(containerId, hiddenId, columns) {
     var container = document.getElementById(containerId);

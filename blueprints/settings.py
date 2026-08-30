@@ -4,6 +4,7 @@ from the app, without a code change. See repositories/settings.py and
 pdf/theme.py for where this data actually lives and gets used.
 """
 import json
+import re
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, Response, send_from_directory
 
@@ -20,6 +21,23 @@ from pdf.purchase_order import build_purchase_order_pdf
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
 _PDF_FONT_CHOICES = ["Helvetica", "Times", "Courier"]
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _clean_hex_color(posted_value, fallback):
+    """Normalizes a posted color field to '#rrggbb', falling back to the
+    previously-saved value for anything malformed. The Document Builder
+    form's color swatch (an <input type=color>) can never itself submit an
+    invalid value, but the paired free-text hex field next to it can carry
+    anything a person typed/pasted -- this is the one place that value gets
+    validated before it reaches the database, static CSS, and
+    reportlab's colors.HexColor() in pdf/theme.py (which raises on a bad
+    hex string, which would otherwise break every PDF)."""
+    v = (posted_value or "").strip()
+    if not v.startswith("#"):
+        v = "#" + v
+    return v if _HEX_COLOR_RE.match(v) else fallback
 
 
 def _parse_table_columns(raw_json):
@@ -147,8 +165,10 @@ def documents_view():
                 return redirect(url_for("settings.documents_view"))
 
             fields = {
-                "accent_color_hex": (request.form.get("accent_color_hex") or "#c1752a").strip(),
-                "structure_color_hex": (request.form.get("structure_color_hex") or "#2e5c7a").strip(),
+                "accent_color_hex": _clean_hex_color(
+                    request.form.get("accent_color_hex"), settings_row["accent_color_hex"] or "#805f22"),
+                "structure_color_hex": _clean_hex_color(
+                    request.form.get("structure_color_hex"), settings_row["structure_color_hex"] or "#2b2823"),
                 "pdf_font": pdf_font,
                 "show_bank_details_on_quote": 1 if request.form.get("show_bank_details_on_quote") else 0,
                 "show_bank_details_on_estimate": 1 if request.form.get("show_bank_details_on_estimate") else 0,
