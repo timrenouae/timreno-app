@@ -144,7 +144,7 @@
             {% elif v.priced_count > 0 %}<span class="badge badge-accent">In progress</span>
             {% else %}<span class="badge badge-muted">Pending</span>{% endif %}
           </td>
-          <td style="font-family:'IBM Plex Mono',monospace;">
+          <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">
             {% if v.priced_count > 0 %}{{ "%.2f"|format(v.total) }}{{ '' if v.is_complete else ' (incomplete)' }}{% else %}—{% endif %}
           </td>
         </tr>
@@ -197,7 +197,7 @@
         <td>{{ i.quantity|round(2) }}</td>
         {% for v in vendors %}
           {% set p = v.prices_by_item.get(i.id) %}
-          <td style="font-family:'IBM Plex Mono',monospace;">
+          <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">
             {% if p and p.unit_price is not none %}{{ "%.2f"|format(p.unit_price) }}{% else %}—{% endif %}
             {% if p and p.vendor_notes %}<br><small class="hint" style="margin:0;">{{ p.vendor_notes }}</small>{% endif %}
           </td>
@@ -207,7 +207,7 @@
       <tr>
         <td colspan="3"><b>Total</b></td>
         {% for v in vendors %}
-          <td style="font-family:'IBM Plex Mono',monospace;">
+          <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">
             <b>{{ "%.2f"|format(v.total) }}</b>{{ '' if v.is_complete else ' (incomplete)' }}
           </td>
         {% endfor %}

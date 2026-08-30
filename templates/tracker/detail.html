@@ -198,7 +198,7 @@
       <tr>
         <td>{{ e.expense_date or '—' }}</td>
         <td>{{ e.description }}</td>
-        <td style="font-family:'IBM Plex Mono',monospace;">{{ "%.2f"|format(e.amount) }}</td>
+        <td style="font-family:'Source Sans 3',sans-serif; font-variant-numeric:tabular-nums;">{{ "%.2f"|format(e.amount) }}</td>
         <td>
           <form method="post" action="{{ url_for('tracker.delete_expense', quote_id=quote.id, expense_id=e.id) }}" onsubmit="return confirm('Delete this expense?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
