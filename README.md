@@ -67,6 +67,9 @@ environment variable again. Not needed for a normal code update.
 
 ## What's inside
 
+- **Left sidebar navigation**: icon + label links to every module you
+  have access to, with a slim top header for your name/role and Log out.
+  Collapses to a hamburger-triggered drawer on narrower screens.
 - **Admin → Users / Roles**: create a login per staff member and assign
   a role. Roles are self-service — tick exactly which permissions each
   one has from the full list, including the Engineer and Vendor portal
@@ -92,12 +95,26 @@ environment variable again. Not needed for a normal code update.
   login (auto-generated credentials, two-phase save-draft/submit), then
   award the winning vendor straight into a real Purchase Order.
 - **Settings → Company info / Document Builder**: company details, bank
-  details, brand colors, PDF font, optional PDF content blocks, and
-  fully configurable table columns on Quote and PO PDFs.
+  details, brand colors (type or paste a hex code, or pick visually — see
+  below), PDF font, optional PDF content blocks, and fully configurable
+  table columns on Quote and PO PDFs.
 - **Public website**: the marketing site at your domain's root (Home,
   Services, About, Our Work, Contact) — pulls company name/logo/colors
   live from Settings, and the contact form saves to **Website Leads**
   for staff to follow up on.
+
+### Brand colors (Settings → Document Builder)
+
+Only two colors in the whole app are editable without a code change —
+**Accent color** and **Structure color** — and they control two things:
+your **public website** and every **PDF**. The rest of the software (the
+actual internal app staff log into) is not affected by these fields; its
+palette is fixed in the code itself, currently a Jira/Atlassian-inspired
+blue (`#0052cc`) and dark navy (`#172b4d`) on a light gray canvas, set in
+`static/css/style.css`. Each Document Builder field has a swatch you can
+click to pick visually, and a text box beside it where you can type or
+paste a hex code directly (e.g. `0052cc`) — both stay in sync, and an
+invalid value is flagged and won't save.
 
 ## Tests
 
