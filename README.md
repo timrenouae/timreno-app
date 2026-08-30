@@ -1,73 +1,110 @@
-# TIM RENO — Unified App (Phase 1)
+# TIM RENO — Unified App
 
-This is the foundation of the new unified TIM RENO system: one real
-database, staff logins, an admin panel with roles/permissions, the Product
-Master (already loaded with your 20,482-item price list), and the Purchase
-Order module (create a PO, download a PDF for the supplier, mark stock
-received — cost prices update automatically).
+One Flask app, one SQLite database, covering the whole business: staff
+logins with roles/permissions, the Product Master, Quotes, a Rough
+Estimator, Purchase Orders, the Project Tracker, a Customer Portal, an
+Engineer login for on-site task completion with photo proof, Material
+Requisitions (multi-vendor pricing with its own Vendor Portal), a
+Settings / Document Builder for company info and PDF branding, and the
+public marketing website at your domain's root.
 
-The old standalone tools (Quote Builder, Rough Estimator, Project Tracker,
-Dashboard) are **not part of this app yet** — porting them so they share
-this same database is the natural next step, and worth discussing once
-you've had a chance to use this piece.
-
-## First-time setup (on your PC)
+## First-time setup (running it on your own PC)
 
 1. Install Python 3.10+ if you don't already have it (python.org).
-2. Open a terminal/command prompt in this folder and install the few
-   packages this app needs:
+2. Open a terminal in this folder and install the packages the app needs:
    ```
    pip install -r requirements.txt
    ```
-3. Create the database (this is already done for the copy you were sent —
-   `timr.db` already contains your full product list — but run this again
-   any time you need to reset or upgrade the schema):
+3. Create the database:
    ```
    python migrate.py
    ```
-4. Create your own admin login (only needs to be done once). Replace
-   `admin` and `"Mustafa"` below with the username and name you actually
-   want — don't type them as shown, they're just an example:
+4. Create your own admin login (only needs to be done once per database):
    ```
-   python scripts/bootstrap_admin.py admin "Mustafa"
+   python scripts/bootstrap_admin.py admin "Your Name"
    ```
-   It will then ask you to type a password on screen (visible as you
-   type — that's expected).
+   It will ask you to type a password on screen (visible as you type —
+   that's expected).
 5. Start the app:
    ```
    python app.py
    ```
 6. Open http://127.0.0.1:5000 in your browser and sign in.
 
-## What you can do
+## Deploying (Render)
 
-- **Admin → Users**: create a login for each staff member and assign them
-  a role.
-- **Admin → Roles**: create roles (e.g. "Purchaser", "Site Manager") and
-  tick exactly which permissions each one has. The built-in **Admin** role
-  always keeps full access so the account can never be locked out.
-- **Product Master**: search, add, and edit products/prices. This is the
-  same catalog that was hardcoded in the old Quote Builder — now editable
-  from here.
-- **Purchases → Suppliers**: add your suppliers.
-- **Purchases**: create a purchase order against a supplier, add line
-  items from the Product Master, download a PDF to send them, and mark
-  lines received as stock arrives — the product's cost price updates
-  automatically and every price change is logged.
+This app is designed to run as-is on Render (or any host that runs a
+Python web process plus a persistent disk). Set these environment
+variables in the dashboard:
 
-## Putting this online for your team
+- `TIMR_SECRET_KEY` — a long random string, kept stable across restarts
+  (changing it logs everyone out). Generate one once and never change it.
+- `TIMR_DB_PATH` — path to the database file on your persistent Disk,
+  e.g. `/var/data/timr.db`. `TIMR_UPLOADS_DIR` defaults to the same
+  folder, so logos and task photos land there too and survive redeploys.
+- `TIMR_COOKIE_SECURE` — leave unset (defaults to on, correct behind
+  HTTPS).
+- `ANTHROPIC_API_KEY` — only needed for the Quote Builder's "Import from
+  Drawing" feature (reads a floor plan and suggests a room list). Optional
+  — everything else works without it. `TIMR_DRAWING_MODEL` lets you pick
+  a different Claude model for this if you ever want to (defaults to a
+  sensible one).
 
-This was built and tested without any internet access, so it currently
-only runs on your own PC. When you're ready to have your team (or,
-later, clients) reach it from anywhere, I'd recommend **PythonAnywhere's
-free tier** — no credit card needed, and it keeps your database file
-safely in place between visits. I can walk you through setting that up
-whenever you're ready; just ask.
+On every redeploy, **your database is untouched** — it lives on the
+persistent Disk (`TIMR_DB_PATH`), never inside the git-deployed code, so
+uploading a fresh copy of this codebase to GitHub and redeploying does
+not affect your live data. `migrate.py` runs automatically on startup and
+only ever adds new tables/columns; it never deletes data.
 
-## What's next
+### Moving your data onto a brand-new deploy
 
-Once you've tried this, the next piece is folding the Quote Builder,
-Rough Estimator, Project Tracker, and Dashboard into this same app and
-database — and after that, the client-facing portal (progress tracking,
-hidden pricing, change requests) and payment links you asked about, in
-that order.
+If you're ever standing up a fresh Render service from scratch (not just
+redeploying this same one), `blueprints/restore.py` has a one-time
+upload form for pushing a `.db` file from your desktop onto it — set the
+`TIMR_RESTORE_TOKEN` environment variable temporarily, visit
+`/setup/restore-db?token=<that value>`, upload the file, then remove the
+environment variable again. Not needed for a normal code update.
+
+## What's inside
+
+- **Admin → Users / Roles**: create a login per staff member and assign
+  a role. Roles are self-service — tick exactly which permissions each
+  one has from the full list, including the Engineer and Vendor portal
+  permissions described below. The built-in **Admin** role always keeps
+  full access.
+- **Product Master**: search, add, and edit the materials/pricing
+  catalog shared by Quotes and Purchase Orders.
+- **Quotes**: room-by-room quote builder, searches the Product Master or
+  add custom line items, plus "Import from Drawing" (upload a floor
+  plan, photo, or sketch and get a suggested room list to price).
+- **Rough Estimator**: a fast, non-binding ballpark estimate PDF.
+- **Purchases**: suppliers, purchase orders with product search, payment
+  terms, delivery info, a DRAFT watermark until sent, an authorized-by
+  signature line, and a one-click "duplicate this PO" for repeat orders.
+- **Project Tracker**: tasks per finalized quote, budget vs. actual, and
+  an **Engineer** login (a simplified checklist-only view, no pricing)
+  that requires a photo before marking a task complete — the photo then
+  shows up on the customer's own portal dashboard.
+- **Customer Portal**: a client's own login to track their project's
+  progress without seeing internal pricing/budget detail.
+- **Material Requisitions**: send one item list to several vendors at
+  once for side-by-side price comparison, via a restricted **Vendor**
+  login (auto-generated credentials, two-phase save-draft/submit), then
+  award the winning vendor straight into a real Purchase Order.
+- **Settings → Company info / Document Builder**: company details, bank
+  details, brand colors, PDF font, optional PDF content blocks, and
+  fully configurable table columns on Quote and PO PDFs.
+- **Public website**: the marketing site at your domain's root (Home,
+  Services, About, Our Work, Contact) — pulls company name/logo/colors
+  live from Settings, and the contact form saves to **Website Leads**
+  for staff to follow up on.
+
+## Tests
+
+```
+python tests/smoke_test.py
+```
+
+Runs the full functional test suite end-to-end against a throwaway
+database (set via `TIMR_DB_PATH` inside the script) — no effect on your
+real data.

@@ -81,6 +81,7 @@ import repositories.settings as settings_repo  # noqa: E402
 import repositories.purchase_orders as po_repo  # noqa: E402
 import repositories.suppliers as suppliers_repo  # noqa: E402
 import repositories.requisitions as requisitions_repo  # noqa: E402
+import repositories.estimator_rates as rates_repo  # noqa: E402
 import repositories.public as public_repo  # noqa: E402
 import pdf.theme as pdf_theme  # noqa: E402
 import pdf.purchase_order as pdf_po  # noqa: E402
@@ -96,6 +97,29 @@ def check(label, condition):
     print(f"[{status}] {label}")
     if not condition:
         failures.append(label)
+
+
+def check_blocked(label, username, password, method, path, **req_kwargs):
+    """app.py's 403 handler no longer returns a bare 403 page -- it clears
+    the triggering session (server-side + cookie) and redirects to the
+    public homepage, so a logged-in account that hits a page it can't see
+    always has a way back in, instead of being stranded (this is what
+    landed a Vendor account in a 403 dead end after following a stale
+    internal link). Every "role X is blocked from Y" check below exercises
+    that whole path: log in fresh on a disposable client (never the
+    caller's long-lived role client, which must stay authenticated for
+    whatever runs after it), make the one blocked request, follow the
+    redirect, and confirm it landed on the public homepage with the
+    "signed out" flash -- not just that some 403-shaped thing happened."""
+    throwaway = app.test_client()
+    r = throwaway.get("/auth/login")
+    c = get_csrf(r.get_data(as_text=True))
+    throwaway.post("/auth/login", data={"username": username, "password": password, "csrf_token": c})
+    fn = getattr(throwaway, method.lower())
+    resp = fn(path, follow_redirects=True, **req_kwargs)
+    html = resp.get_data(as_text=True)
+    check(label, resp.status_code == 200 and "Get a Free Quote" in html and "signed out" in html.lower())
+    return throwaway
 
 
 def get_csrf(html):
@@ -149,8 +173,8 @@ buyer_client = app.test_client()
 r = buyer_client.get("/auth/login")
 c = get_csrf(r.get_data(as_text=True))
 buyer_client.post("/auth/login", data={"username": "smoketest_buyer", "password": "BuyerPass123!", "csrf_token": c})
-resp = buyer_client.get("/admin/users")
-check("non-admin role blocked from /admin/users (403)", resp.status_code == 403)
+check_blocked("non-admin role blocked from /admin/users (signed out, redirected home)",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/admin/users")
 resp = buyer_client.get("/purchases/")
 check("buyer role CAN reach /purchases/ (200)", resp.status_code == 200)
 
@@ -514,6 +538,54 @@ check("send-to-builder quote terms are actually empty", len(sent_terms) == 0)
 check("send-to-builder unconditionally bumps the counter by 1", counter_after_send == counter_before_send + 1)
 check("send-to-builder job_notes mentions the Rough Estimator", "Rough Estimator" in (sent_quote["job_notes"] or ""))
 
+# ------------------------------------------------- 11b. estimator: Quick Estimate
+# Item 5 follow-up (per-sqft Low/Medium/High rates + Import from Drawing reuse).
+resp = client.get("/estimator/")
+check("estimator page includes sqftRates in initial data", '"sqftRates"' in resp.get_data(as_text=True))
+
+resp = post_json(client, "/estimator/sqft-rates/save", {"rates": {"sqft_house_low": 200, "sqft_house_medium": 350}}, est_csrf)
+check("save sqft rate overrides returns 200", resp.status_code == 200)
+sqft_rates_after_save = resp.get_json().get("sqftRates", {})
+check("non-default sqft rate is stored as an override", sqft_rates_after_save["house"]["Low"]["rate"] == 200)
+check("sqft rate equal to its default is NOT stored (sparse storage, same table as item rates)",
+      sqft_rates_after_save["house"]["Medium"]["rate"] == 350)
+check("office sqft rates are untouched by a house-only save", sqft_rates_after_save["office"]["Low"]["rate"] == 110)
+
+resp = post_json(client, "/estimator/sqft-rates/reset", {}, est_csrf)
+check("reset sqft rates returns 200", resp.status_code == 200)
+sqft_rates_after_reset = resp.get_json().get("sqftRates", {})
+check("sqft rates back to their defaults after reset", sqft_rates_after_reset["house"]["Low"]["rate"] == 180)
+
+resp = post_json(client, "/estimator/rates/save", {"rates": {"socket": 999}}, est_csrf)
+check("item-rate save still works after adding sqft rates to the shared table", resp.status_code == 200)
+post_json(client, "/estimator/sqft-rates/reset", {}, est_csrf)
+with db.connect() as conn:
+    check("sqft-only reset doesn't wipe the item-rate override just saved",
+          rates_repo.get_overrides(conn).get("socket") == 999)
+post_json(client, "/estimator/rates/reset", {}, est_csrf)  # cleanup for later sections that assume defaults
+
+quick_estimate_payload = {
+    "project_type": "office", "tier": "Medium",
+    "project_name": "Quick Estimate Test", "location": "Business Bay, Dubai", "vat_percent": 5,
+    "rooms": [{"name": "Open Area", "sqft": 500}, {"name": "Cabin 1", "sqft": 100}],
+}
+resp = post_json(client, "/estimator/quick-pdf", quick_estimate_payload, est_csrf)
+check("quick-pdf endpoint returns 200", resp.status_code == 200)
+check("quick-pdf is application/pdf", resp.content_type == "application/pdf")
+check("quick-pdf starts with %PDF magic bytes", resp.data[:4] == b"%PDF")
+
+resp = post_json(client, "/estimator/quick-pdf", {**quick_estimate_payload, "rooms": []}, est_csrf)
+check("quick-pdf with no rooms is rejected (400)", resp.status_code == 400)
+
+resp = post_json(client, "/estimator/quick-pdf", {**quick_estimate_payload, "project_type": "bogus"}, est_csrf)
+check("quick-pdf with an unknown project type is rejected (400)", resp.status_code == 400)
+
+resp = client.post("/estimator/import-drawing", data={"csrf_token": est_csrf}, content_type="multipart/form-data")
+check("estimator import-drawing with no file returns 400 (same shared logic as Quote Builder's)", resp.status_code == 400)
+check_blocked("buyer (no quotes.manage) is blocked from estimator/import-drawing",
+              "smoketest_buyer", "BuyerPass123!", "POST", "/estimator/import-drawing",
+              data={"csrf_token": "irrelevant"}, content_type="multipart/form-data")
+
 
 def _make_1px_png():
     """Builds a real, valid 1x1 grayscale PNG from scratch (zlib + struct,
@@ -732,15 +804,22 @@ resp = buyer_client.get("/quotes/")
 check("buyer (no quotes.manage) CAN reach the quotes list (login_required only)", resp.status_code == 200)
 r = client.get("/quotes/new")
 buyer_dummy_csrf = "not-a-real-token"
-resp = buyer_client.post("/quotes/save-draft", data=_json.dumps(room_a_payload), content_type="application/json",
-                          headers={"X-CSRF-Token": buyer_dummy_csrf})
-check("buyer is blocked (403) from mutating quotes (quotes.manage required)", resp.status_code == 403)
-resp = buyer_client.get("/estimator/")
-check("buyer is blocked (403) from the Rough Estimator page (quotes.manage required)", resp.status_code == 403)
+# These three routes all require quotes.manage, which the Buyer role
+# doesn't hold -- the permission decorator rejects the request before the
+# view body's csrf_protect() ever runs, so the bogus tokens below never
+# actually get checked (that's confirmed by check_blocked reaching the
+# signed-out-and-redirected-home behavior, not a CSRF-related 400).
+check_blocked("buyer is blocked from mutating quotes (quotes.manage required)",
+              "smoketest_buyer", "BuyerPass123!", "POST", "/quotes/save-draft",
+              data=_json.dumps(room_a_payload), content_type="application/json",
+              headers={"X-CSRF-Token": buyer_dummy_csrf})
+check_blocked("buyer is blocked from the Rough Estimator page (quotes.manage required)",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/estimator/")
 resp = buyer_client.get("/tracker/")
 check("buyer CAN reach the tracker list (login_required only)", resp.status_code == 200)
-resp = buyer_client.post(f"/tracker/{quote_full_id}/team/add", data={"name": "X", "role": "Labor", "csrf_token": "bad"})
-check("buyer is blocked (403) from tracker mutations (quotes.manage required)", resp.status_code == 403)
+check_blocked("buyer is blocked from tracker mutations (quotes.manage required)",
+              "smoketest_buyer", "BuyerPass123!", "POST", f"/tracker/{quote_full_id}/team/add",
+              data={"name": "X", "role": "Labor", "csrf_token": "bad"})
 
 # --------------------------------------------------- 15. customer portal
 with db.connect() as conn:
@@ -773,17 +852,17 @@ check("customer can view their own linked project's progress", resp.status_code 
 portal_html = resp.get_data(as_text=True)
 check("customer portal shows the item checklist, not cost weights", "Kitchen" in portal_html and "Weight:" not in portal_html)
 
-resp = customer_client.get(f"/tracker/{quote_full_id}")
-check("customer is blocked (403) from the internal Tracker detail page", resp.status_code == 403)
-resp = customer_client.get("/products/")
-check("customer is blocked (403) from the Product Master", resp.status_code == 403)
-resp = customer_client.get("/quotes/")
-check("customer is blocked (403) from the internal quotes list", resp.status_code == 403)
-resp = customer_client.get(f"/quotes/{quote_full_id}/pdf")
-check("customer is blocked (403) from downloading the quote PDF", resp.status_code == 403)
+check_blocked("customer is blocked from the internal Tracker detail page",
+              "smoketest_customer", "CustomerPass123!", "GET", f"/tracker/{quote_full_id}")
+check_blocked("customer is blocked from the Product Master",
+              "smoketest_customer", "CustomerPass123!", "GET", "/products/")
+check_blocked("customer is blocked from the internal quotes list",
+              "smoketest_customer", "CustomerPass123!", "GET", "/quotes/")
+check_blocked("customer is blocked from downloading the quote PDF",
+              "smoketest_customer", "CustomerPass123!", "GET", f"/quotes/{quote_full_id}/pdf")
 
-resp = customer_client.get(f"/portal/{high_quote_id}")
-check("customer is blocked (403) from a quote NOT linked to them (ownership check)", resp.status_code == 403)
+check_blocked("customer is blocked from a quote NOT linked to them (ownership check)",
+              "smoketest_customer", "CustomerPass123!", "GET", f"/portal/{high_quote_id}")
 
 resp = customer_client.get(f"/tracker/tasks/{task_id}/photo")
 check("linked customer can view a completed task's photo on their own project (200)", resp.status_code == 200)
@@ -889,15 +968,15 @@ check("the newly-completed task's thumbnail appears on the Tracker detail page",
 resp = engineer_client.get(f"/tracker/tasks/{cleanup_task_id}/photo")
 check("Engineer can view the photo they just uploaded (200)", resp.status_code == 200)
 
-resp = engineer_client.get("/quotes/")
-check("Engineer is blocked (403) from the internal quotes list", resp.status_code == 403)
-resp = engineer_client.get("/products/")
-check("Engineer is blocked (403) from the Product Master", resp.status_code == 403)
-resp = engineer_client.get(f"/quotes/{quote_full_id}/pdf")
-check("Engineer is blocked (403) from downloading the quote PDF", resp.status_code == 403)
-resp = engineer_client.post(f"/tracker/{quote_full_id}/team/add",
-                             data={"name": "X", "role": "Labor", "csrf_token": "bad"})
-check("Engineer is blocked (403) from tracker mutations that require quotes.manage", resp.status_code == 403)
+check_blocked("Engineer is blocked from the internal quotes list",
+              "smoketest_engineer", "EngineerPass123!", "GET", "/quotes/")
+check_blocked("Engineer is blocked from the Product Master",
+              "smoketest_engineer", "EngineerPass123!", "GET", "/products/")
+check_blocked("Engineer is blocked from downloading the quote PDF",
+              "smoketest_engineer", "EngineerPass123!", "GET", f"/quotes/{quote_full_id}/pdf")
+check_blocked("Engineer is blocked from tracker mutations that require quotes.manage",
+              "smoketest_engineer", "EngineerPass123!", "POST", f"/tracker/{quote_full_id}/team/add",
+              data={"name": "X", "role": "Labor", "csrf_token": "bad"})
 
 # any internal account (not just the linked customer) can view a task photo --
 # a deliberate QA-record design, not an ownership restriction. Buyer holds
@@ -915,15 +994,11 @@ with db.connect() as conn:
     roles_repo.set_role_permissions(conn, other_customer_role_id, {"tracker.view_own"})
     pw_hash5, salt5, iters5 = auth.hash_password("Customer2Pass123!")
     users_repo.create_user(conn, "smoketest_customer2", "Smoke Customer Two", pw_hash5, salt5, iters5, other_customer_role_id)
-other_customer_client = app.test_client()
-r = other_customer_client.get("/auth/login")
-c = get_csrf(r.get_data(as_text=True))
-other_customer_client.post("/auth/login", data={"username": "smoketest_customer2", "password": "Customer2Pass123!", "csrf_token": c})
-resp = other_customer_client.get(f"/tracker/tasks/{cleanup_task_id}/photo")
-check("a customer NOT linked to this quote is blocked (403) from its task photo", resp.status_code == 403)
+check_blocked("a customer NOT linked to this quote is blocked from its task photo",
+              "smoketest_customer2", "Customer2Pass123!", "GET", f"/tracker/tasks/{cleanup_task_id}/photo")
 
-resp = other_customer_client.get(f"/tracker/{quote_full_id}")
-check("a customer is still blocked (403) from the internal Tracker detail page", resp.status_code == 403)
+check_blocked("a customer is still blocked from the internal Tracker detail page",
+              "smoketest_customer2", "Customer2Pass123!", "GET", f"/tracker/{quote_full_id}")
 
 # regression: quotes.manage staff still see the full, unchanged Tracker
 # experience (Budget/Team/Customer-access/Weight/PDF-download all present)
@@ -1149,10 +1224,11 @@ with db.connect() as conn:
     saved3 = settings_repo.get_settings(conn)
 check("invalid logo extension rejected, previous logo kept", saved3["logo_filename"] == saved2["logo_filename"])
 
-resp = buyer_client.get("/settings/")
-check("buyer is blocked (403) from Settings (settings.manage required)", resp.status_code == 403)
-resp = buyer_client.post("/settings/", data={"csrf_token": "bad", "company_name": "Hijacked"})
-check("buyer is blocked (403) from saving Settings", resp.status_code == 403)
+check_blocked("buyer is blocked from Settings (settings.manage required)",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/settings/")
+check_blocked("buyer is blocked from saving Settings",
+              "smoketest_buyer", "BuyerPass123!", "POST", "/settings/",
+              data={"csrf_token": "bad", "company_name": "Hijacked"})
 
 # ------------------------------------------------------------------ Item 4:
 # PO product search, payment terms/delivery info, DRAFT watermark,
@@ -1371,11 +1447,10 @@ resp = client.post("/quotes/import-drawing", data={
 }, content_type="multipart/form-data")
 check("import-drawing is CSRF-protected (bad token rejected, 400)", resp.status_code == 400)
 
-resp = buyer_client.post("/quotes/import-drawing", data={
-    "csrf_token": "irrelevant",
-    "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
-}, content_type="multipart/form-data")
-check("buyer (no quotes.manage) is blocked from import-drawing (403)", resp.status_code == 403)
+check_blocked("buyer (no quotes.manage) is blocked from import-drawing",
+              "smoketest_buyer", "BuyerPass123!", "POST", "/quotes/import-drawing",
+              data={"csrf_token": "irrelevant", "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png")},
+              content_type="multipart/form-data")
 
 check("ANTHROPIC_API_KEY is unset in this sandbox (expected -- no key available here)",
       config.ANTHROPIC_API_KEY in (None, ""))
@@ -1392,7 +1467,7 @@ check("not-configured error message is actionable", "configured" in (resp.get_js
 # zero-rooms message, and mapping SDK exceptions to clean JSON errors --
 # all without a real network call or a real installed `anthropic` package.
 import types as _types
-import blueprints.quotes as quotes_bp_module
+import drawing_import
 
 
 class _FakeAPIError(Exception):
@@ -1445,7 +1520,7 @@ def _make_fake_anthropic(behavior):
     )
 
 
-_real_anthropic_module = quotes_bp_module.anthropic
+_real_anthropic_module = drawing_import.anthropic
 _real_api_key = config.ANTHROPIC_API_KEY
 config.ANTHROPIC_API_KEY = "sk-ant-fake-key-for-smoke-test"
 
@@ -1461,7 +1536,7 @@ try:
             {"name": "Room 2", "approx_sqft": "not-a-number", "source_note": "  "},
         ]})])
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_success_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_success_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
@@ -1482,7 +1557,7 @@ try:
     def _empty_behavior(**kwargs):
         return _FakeResponse([_FakeToolUseBlock("record_rooms", {"rooms": []})])
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_empty_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_empty_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
@@ -1499,7 +1574,7 @@ try:
               content[0]["type"] == "document" and content[0]["source"]["media_type"] == "application/pdf")
         return _FakeResponse([_FakeToolUseBlock("record_rooms", {"rooms": [{"name": "Room 1"}]})])
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_pdf_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_pdf_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(b"%PDF-1.4 fake pdf bytes"), "plan.pdf"),
@@ -1510,7 +1585,7 @@ try:
     def _auth_error_behavior(**kwargs):
         raise _FakeAuthenticationError("invalid x-api-key")
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_auth_error_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_auth_error_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
@@ -1523,7 +1598,7 @@ try:
     def _rate_limit_behavior(**kwargs):
         raise _FakeRateLimitError("rate limited")
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_rate_limit_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_rate_limit_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
@@ -1535,7 +1610,7 @@ try:
     def _weird_behavior(**kwargs):
         raise RuntimeError("something totally unexpected")
 
-    quotes_bp_module.anthropic = _make_fake_anthropic(_weird_behavior)
+    drawing_import.anthropic = _make_fake_anthropic(_weird_behavior)
     resp = client.post("/quotes/import-drawing", data={
         "csrf_token": drawing_csrf,
         "drawing_file": (io.BytesIO(_PNG_1PX), "plan.png"),
@@ -1544,7 +1619,7 @@ try:
           resp.status_code == 500 and resp.content_type.startswith("application/json")
           and "error" in (resp.get_json() or {}))
 finally:
-    quotes_bp_module.anthropic = _real_anthropic_module
+    drawing_import.anthropic = _real_anthropic_module
     config.ANTHROPIC_API_KEY = _real_api_key
 
 resp = client.post("/quotes/import-drawing", data={
@@ -1758,6 +1833,24 @@ resp = mr_vendor_a_client.post("/auth/login", data={
 }, follow_redirects=True)
 check("vendor A logs in with the generated credentials", b"Material Requests" in resp.data)
 
+# regression: a portal-only account that reaches /auth/login via a stale
+# "next" redirect (e.g. an old bookmark to an internal-only page from
+# before the public site existed) must land on ITS OWN dashboard after
+# logging in, not get bounced straight back to that internal page and
+# 403 there. See blueprints/auth.py's login() -- next is only honored for
+# non-portal-only accounts.
+mr_vendor_a_stale_next_client = app.test_client()
+resp = mr_vendor_a_stale_next_client.get("/products/", follow_redirects=False)
+check("an unauthenticated vendor hitting an internal-only page is redirected to login with ?next set",
+      resp.status_code == 302 and "/auth/login" in resp.headers["Location"] and "next=" in resp.headers["Location"])
+r = mr_vendor_a_stale_next_client.get(resp.headers["Location"])
+c = get_csrf(r.get_data(as_text=True))
+resp = mr_vendor_a_stale_next_client.post("/auth/login", data={
+    "username": expected_username_a, "password": expected_password_a, "next": "/products/", "csrf_token": c,
+}, follow_redirects=True)
+check("a vendor logging in via a stale next=/products/ link lands on the Vendor portal, not a 403",
+      resp.status_code == 200 and b"Material Requests" in resp.data and b"403" not in resp.data)
+
 resp = mr_vendor_a_client.get("/", follow_redirects=True)
 check("vendor A lands on the Vendor portal at '/', not Product Master",
       b"Material Requests" in resp.data and b"Product Master" not in resp.data)
@@ -1767,12 +1860,14 @@ check("vendor A's dashboard lists their own invitation",
 
 for blocked_path in ("/products/", "/quotes/", "/purchases/", "/tracker/", "/settings/",
                       "/admin/users", "/requisitions/", "/estimator/"):
-    resp = mr_vendor_a_client.get(blocked_path)
-    check(f"vendor A is blocked (403) from {blocked_path}, same as Customer/Engineer portal-only accounts",
-          resp.status_code == 403)
+    # throwaway client per path -- mr_vendor_a_client itself must stay
+    # logged in for the large Material Requisitions flow that continues
+    # to use it well after this loop.
+    check_blocked(f"vendor A is blocked from {blocked_path}, same as Customer/Engineer portal-only accounts",
+                  expected_username_a, expected_password_a, "GET", blocked_path)
 
-resp = mr_vendor_a_client.get(f"/vendor-portal/{mr_rv_b['id']}")
-check("vendor A is blocked (403) from vendor B's requisition-vendor detail page", resp.status_code == 403)
+check_blocked("vendor A is blocked from vendor B's requisition-vendor detail page",
+              expected_username_a, expected_password_a, "GET", f"/vendor-portal/{mr_rv_b['id']}")
 
 resp = mr_vendor_a_client.get(f"/vendor-portal/{mr_rv_a['id']}")
 check("vendor A can view their own requisition-vendor detail page", resp.status_code == 200)
@@ -1862,8 +1957,8 @@ c = get_csrf(r.get_data(as_text=True))
 mr_vendor_b_client.post("/auth/login", data={
     "username": expected_username_b, "password": expected_password_b, "csrf_token": c,
 })
-resp = mr_vendor_b_client.get(f"/vendor-portal/{mr_rv_a['id']}")
-check("vendor B is blocked (403) from vendor A's requisition-vendor detail page", resp.status_code == 403)
+check_blocked("vendor B is blocked from vendor A's requisition-vendor detail page",
+              expected_username_b, expected_password_b, "GET", f"/vendor-portal/{mr_rv_a['id']}")
 
 resp = mr_vendor_b_client.get(f"/vendor-portal/{mr_rv_b['id']}")
 mr_vb_csrf = get_csrf(resp.get_data(as_text=True))
@@ -1947,10 +2042,10 @@ staff_nav_html = resp.get_data(as_text=True)
 check("staff (requisitions.manage via Admin) sees 'Material Requisitions' in the nav",
       "Material Requisitions" in staff_nav_html)
 
-resp = buyer_client.get("/requisitions/")
-check("Buyer role (no requisitions.manage) is blocked (403) from the staff requisitions list", resp.status_code == 403)
-resp = buyer_client.get("/vendor-portal/")
-check("Buyer role hitting the vendor portal (no linked supplier) gets 403, not a crash", resp.status_code == 403)
+check_blocked("Buyer role (no requisitions.manage) is blocked from the staff requisitions list",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/requisitions/")
+check_blocked("Buyer role hitting the vendor portal (no linked supplier) is signed out, not a crash",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/vendor-portal/")
 
 # ============================================================ Item 7: public site + leads inbox
 
@@ -2015,8 +2110,8 @@ resp = client.get("/leads/")
 check("Admin (holds leads.view via 'all permissions') can open the leads inbox (200)", resp.status_code == 200)
 check("the submitted inquiry appears in the staff leads inbox", "Priya Sharma" in resp.get_data(as_text=True))
 
-resp = buyer_client.get("/leads/")
-check("Buyer role (no leads.view) is blocked (403) from the leads inbox", resp.status_code == 403)
+check_blocked("Buyer role (no leads.view) is blocked from the leads inbox",
+              "smoketest_buyer", "BuyerPass123!", "GET", "/leads/")
 
 r = client.get("/leads/")
 c = get_csrf(r.get_data(as_text=True))

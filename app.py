@@ -8,7 +8,7 @@ Run locally:
 """
 import datetime
 
-from flask import Flask, g
+from flask import Flask, g, request, redirect, url_for, flash, make_response
 
 import auth
 import config
@@ -81,7 +81,27 @@ def create_app():
 
     @app.errorhandler(403)
     def forbidden(e):
-        return "403 Forbidden — you don't have permission to view this page.", 403
+        # A 403 here always happens to a *logged-in* account whose own
+        # session steered it somewhere that account was never meant to
+        # see -- a stale link, a bookmark meant for a different role, a
+        # portal-only account (Customer/Engineer/Vendor) whose setup isn't
+        # finished yet. Those accounts have no internal nav to click back
+        # out through, so a bare error page is a dead end. Instead, this
+        # clears the session -- server-side (auth.revoke_session, same
+        # call blueprints/auth.py's logout route makes) and the cookie --
+        # and sends the visitor to the public homepage, where signing
+        # back in (as the same account once it's fixed, or a different
+        # one) always works, rather than immediately bouncing them into
+        # the same broken page again the way a plain redirect to their
+        # "own dashboard" would.
+        token = request.cookies.get(auth.SESSION_COOKIE_NAME)
+        if token:
+            with db.connect() as conn:
+                auth.revoke_session(conn, token)
+        flash("That page isn't available to your account, so you've been signed out. Please sign back in.", "error")
+        resp = make_response(redirect(url_for("public.home")))
+        resp.delete_cookie(auth.SESSION_COOKIE_NAME)
+        return resp
 
     @app.errorhandler(400)
     def bad_request(e):
